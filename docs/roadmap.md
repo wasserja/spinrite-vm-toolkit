@@ -10,6 +10,12 @@ than the VM can carry, and `bin/spinrite-attach.sh` now refuses an over-capacity
 selection and suggests a first batch. That path has never run against a real
 over-capacity machine — it was verified with a forced disk list, not real hardware.
 
+The same applies to the rest of the reworked CLI: the argument parsing, the error
+paths and both read-only modes were exercised, but `attach` has not yet unmounted,
+attached and launched a real disk under the new interface. The first session on real
+hardware is the test — expect to check that `attach sdb sdc` attaches exactly those
+two, and that `--yes` works in place of the typed confirmation.
+
 What to find out while doing it:
 
 - Where the real ceiling is. AHCI `PortCount` is 3 as built and raising it is one
