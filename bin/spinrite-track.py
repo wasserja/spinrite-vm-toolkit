@@ -14,7 +14,7 @@ setup, SpinRite's benchmark goes through BIOS-extended access (much slower,
 e.g. ~384 MB/s observed) while ReadSpeed uses a faster path (e.g. ~1500-1650
 MB/s observed on the same physical drive same day). Compare SpinRite-before
 to SpinRite-after, and ReadSpeed-before to ReadSpeed-after, never across
-tools. See spinrite_tracker_database memory for detail.
+tools. See docs/tracking.md and docs/field-notes.md for detail.
 
 Usage:
   spinrite-track.py report [--computer SERIAL] [--disk SERIAL]
