@@ -1,5 +1,7 @@
 # SpinRite VM Toolkit
 
+<https://github.com/wasserja/spinrite-vm-toolkit>
+
 Scripts, documentation and a Claude Code skill for running **GRC SpinRite** and
 **ReadSpeed** against real physical drives from a persistent Kubuntu live USB —
 by giving a FreeDOS VirtualBox VM raw passthrough access to the host's disks.
@@ -55,18 +57,22 @@ licensed copy and place it on the FreeDOS VM's `C:` drive — see
 ## Quick start
 
 ```bash
-# 1. install the scripts
+# 1. get the repo
+git clone https://github.com/wasserja/spinrite-vm-toolkit.git
+cd spinrite-vm-toolkit
+
+# 2. install the scripts
 mkdir -p ~/bin
 cp bin/spinrite-attach.sh bin/spinrite-backup.sh bin/spinrite-track.py ~/bin/
 chmod +x ~/bin/spinrite-*
 
-# 2. optional: desktop launcher (edit YOUR_USER in the Exec= line first)
+# 3. optional: desktop launcher (edit YOUR_USER in the Exec= line first)
 cp desktop/spinrite-attach.desktop ~/Desktop/
 
-# 3. optional: the Claude Code skill
+# 4. optional: the Claude Code skill
 mkdir -p ~/.claude/skills && cp -r skills/virtualbox-dos-vm ~/.claude/skills/
 
-# 4. check what this stick has already done, then run
+# 5. check what this stick has already done, then run
 ~/bin/spinrite-track.py report
 ~/bin/spinrite-attach.sh
 ```
