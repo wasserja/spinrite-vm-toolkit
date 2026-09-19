@@ -9,7 +9,21 @@ set -euo pipefail
 
 VM_NAME="SRDOS"
 VM_DIR="$HOME/VirtualBox VMs"
-CONTROLLER="AHCI"
+
+# Which VirtualBox storage controller the physical disks land on. AHCI is the
+# default and is what every tracker row to date was measured against;
+# `--controller ide` puts them on PIIX4 instead, where SpinRite's own ATA driver
+# engages rather than the guest BIOS path. That is measurably faster at Level 3
+# but changes what ReadSpeed reports, so a before/after pair is only comparable
+# within one controller. See docs/field-notes.md.
+AHCI_CONTROLLER="AHCI"
+IDE_CONTROLLER="PIIX4"
+CONTROLLER="$AHCI_CONTROLLER"
+
+# PIIX4 port 0 device 0 carries the FreeDOS C: system disk. It is never offered
+# as a slot and never detached -- without it the VM stops booting, and nothing
+# reports that until the guest is sitting at a boot prompt.
+SYSTEM_SLOT="PIIX4 0 0"
 
 # Shortest token accepted as a serial substring. Device names are matched
 # exactly, so this only bounds the fuzzy path -- a two-character typo must not
@@ -30,6 +44,8 @@ Usage:
   $SELF attach S0EXAMPLE000001   # ...or by serial substring
   $SELF attach --all --except sde
   $SELF attach --all --yes       # skip the typed confirmation
+  $SELF attach sdb --controller ide   # ...on PIIX4/IDE rather than AHCI
+  $SELF list --controller ide
   $SELF prune                    # unregister stale VirtualBox media entries
   $SELF prune --yes
   $SELF --help
@@ -41,6 +57,13 @@ records and they survive a reboot, so a batch list carries between sessions.
 Every attached disk has its partitions unmounted and is handed raw to a DOS
 utility that rewrites every sector at Level 3. The live boot USB is always
 excluded from discovery.
+
+--controller picks where they land: 'ahci' (default, 3 ports) or 'ide' (PIIX4,
+3 usable slots -- port 0 device 0 holds the VM's own FreeDOS system disk and is
+never touched). Either way an attach first clears BOTH controllers of any
+physical disk left attached by a previous run, so the guest can never see the
+same drive twice. ReadSpeed and SpinRite numbers are NOT comparable across
+controllers -- see docs/field-notes.md.
 EOF
 }
 
@@ -48,6 +71,14 @@ usage_die() {
   printf 'ERROR: %s\n\n' "$1" >&2
   usage >&2
   exit 2
+}
+
+set_controller() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    ahci|sata)  CONTROLLER="$AHCI_CONTROLLER" ;;
+    ide|piix4)  CONTROLLER="$IDE_CONTROLLER" ;;
+    *) usage_die "unknown controller '$1' -- expected 'ahci' or 'ide'." ;;
+  esac
 }
 
 # ---------------------------------------------------------------- arguments
@@ -89,6 +120,11 @@ while [ $# -gt 0 ]; do
     --all)     WANT_ALL=1; collect="names" ;;
     --except)  collect="excepts" ;;
     -y|--yes)  ASSUME_YES=1 ;;
+    --controller)
+      [ $# -ge 2 ] || usage_die "--controller needs a value ('ahci' or 'ide')."
+      set_controller "$2"; shift ;;
+    --controller=*)
+      set_controller "${1#*=}" ;;
     -h|--help) usage; exit 0 ;;
     -*)        usage_die "unknown option: $1" ;;
     *)
@@ -104,7 +140,7 @@ done
 
 if [ "$MODE" = "list" ]; then
   [ "$WANT_ALL" = 0 ] && [ "${#NAMES[@]}" = 0 ] && [ "${#EXCEPTS[@]}" = 0 ] \
-    || usage_die "'list' takes no disk names or flags -- it only ever prints."
+    || usage_die "'list' takes no disk names -- it only ever prints. (--controller is accepted.)"
 elif [ "$MODE" = "prune" ]; then
   [ "$WANT_ALL" = 0 ] && [ "${#NAMES[@]}" = 0 ] && [ "${#EXCEPTS[@]}" = 0 ] \
     || usage_die "'prune' takes no disk names -- it only ever touches the media registry. (--yes is accepted.)"
@@ -312,17 +348,37 @@ print_table() {
   done
 }
 
-# AHCI port count caps how many raw disks one run can carry. Every run detaches
-# whatever is on the controller first, so the full port count is what is
-# available -- there is no such thing as a port left occupied by a prior run.
-ahci_port_count() {
-  local info idx
-  info="$1"
-  idx=$(printf '%s\n' "$info" | awk -F'[="]' -v c="$CONTROLLER" \
+is_system_slot() { [ "$1 $2 $3" = "$SYSTEM_SLOT" ]; }
+
+# Every slot on a controller that can carry a raw physical disk, one
+# "<port> <device>" pair per line. AHCI addresses a disk by port with device
+# always 0, and its width is the VM's configured portcount; PIIX4 is a fixed
+# 2 ports x 2 devices, minus the system disk's slot. As the VM is built today
+# both come to 3, so switching controllers costs nothing in drive count.
+#
+# How many slots exist is also how many disks one run can carry: every run
+# detaches whatever was attached first, so there is no such thing as a slot left
+# occupied by a prior run.
+controller_slots() {
+  local ctl="$1" info="$2" idx count p d
+  idx=$(printf '%s\n' "$info" | awk -F'[="]' -v c="$ctl" \
     '$1 ~ /^storagecontrollername[0-9]+$/ && $3==c {sub(/^storagecontrollername/,"",$1); print $1; exit}')
   [ -n "$idx" ] || return 1
-  printf '%s\n' "$info" | awk -F'"' -v k="storagecontrollerportcount$idx=" \
-    'index($0,k)==1 {print $2; exit}'
+  count=$(printf '%s\n' "$info" | awk -F'"' -v k="storagecontrollerportcount$idx=" \
+    'index($0,k)==1 {print $2; exit}')
+  [ -n "$count" ] || return 1
+
+  # IDE carries two devices per port (master/slave); AHCI is one per port.
+  local devices="0"
+  [ "$ctl" = "$IDE_CONTROLLER" ] && devices="0 1"
+
+  for (( p=0; p<count; p++ )); do
+    for d in $devices; do
+      if ! is_system_slot "$ctl" "$p" "$d"; then
+        printf '%s %s\n' "$p" "$d"
+      fi
+    done
+  done
 }
 
 # ---------------------------------------------------------------- list mode
@@ -334,19 +390,20 @@ if [ "$MODE" = "list" ]; then
   print_table
   log ""
 
-  ports=""
+  slots=()
   if vminfo=$(VBM showvminfo "$VM_NAME" --machinereadable 2>/dev/null); then
-    ports=$(ahci_port_count "$vminfo" || true)
+    mapfile -t slots < <(controller_slots "$CONTROLLER" "$vminfo" || true)
   fi
-  if [ -n "$ports" ]; then
-    log "${#candidates[@]} disk(s) found, $ports $CONTROLLER port(s) on $VM_NAME."
-    if [ "${#candidates[@]}" -gt "$ports" ]; then
-      log "More disks than ports -- work them in batches, logging each batch in the"
+  if [ "${#slots[@]}" -gt 0 ]; then
+    log "${#candidates[@]} disk(s) found, ${#slots[@]} usable $CONTROLLER slot(s) on $VM_NAME."
+    if [ "${#candidates[@]}" -gt "${#slots[@]}" ]; then
+      log "More disks than slots -- work them in batches, logging each batch in the"
       log "tracker as it finishes:  ~/bin/spinrite-track.py report"
     fi
   else
-    log "${#candidates[@]} disk(s) found. ($VM_NAME port count unavailable -- VM not"
-    log "found or VBoxManage unreadable; 'attach' will report the real error.)"
+    log "${#candidates[@]} disk(s) found. ($VM_NAME's $CONTROLLER slots are unavailable"
+    log "-- VM not found, controller absent, or VBoxManage unreadable; 'attach' will"
+    log "report the real error.)"
   fi
   log ""
   log "  To attach all:      $SELF attach --all"
@@ -410,15 +467,16 @@ case "$state" in
   *) die "VM '$VM_NAME' is not powered off (state: $state). Power it off first." ;;
 esac
 
-port_count=$(ahci_port_count "$vminfo") \
-  || die "VM '$VM_NAME' has no '$CONTROLLER' storage controller."
+mapfile -t SLOTS < <(controller_slots "$CONTROLLER" "$vminfo" || true)
+[ "${#SLOTS[@]}" -gt 0 ] \
+  || die "VM '$VM_NAME' has no usable '$CONTROLLER' slots -- controller missing, or every slot is the system disk's."
 
 # Capacity guard, before a single disk is attached. Attaching part of a set and
 # then failing on the rest leaves a half-prepared VM and unmounted filesystems.
-if [ "${#selected[@]}" -gt "$port_count" ]; then
-  batch=("${selected[@]:0:$port_count}")
+if [ "${#selected[@]}" -gt "${#SLOTS[@]}" ]; then
+  batch=("${selected[@]:0:${#SLOTS[@]}}")
   cat >&2 <<EOF
-ERROR: ${#selected[@]} disks selected, $port_count $CONTROLLER port(s) on $VM_NAME.
+ERROR: ${#selected[@]} disks selected, ${#SLOTS[@]} usable $CONTROLLER slot(s) on $VM_NAME.
 
   Run in batches -- attach the first set, complete it, then re-run with the rest:
     $SELF attach ${batch[*]}
@@ -447,7 +505,7 @@ for f in "$VM_DIR"/*.vmdk; do
   fi
 done
 
-log "About to attach ${#selected[@]} disk(s) to $VM_NAME: ${selected[*]/#/\/dev\/}"
+log "About to attach ${#selected[@]} disk(s) to $VM_NAME on $CONTROLLER: ${selected[*]/#/\/dev\/}"
 log "Each one gets its partitions unmounted and is handed raw to a DOS utility"
 log "that rewrites every sector at Level 3."
 log ""
@@ -458,26 +516,34 @@ else
   [ "$confirm" = "yes" ] || die "Aborted by user."
 fi
 
-# Detach anything already sitting on the AHCI controller before attaching the
-# disks selected this run. Without this, a disk attached during a previous
+# Detach anything already sitting on EITHER controller before attaching the disks
+# selected this run. Without this, a disk attached during a previous
 # boot/session (e.g. on different physical hardware) would stay attached
 # alongside the new one instead of being replaced -- a stale, no-longer-real
-# disk showing up in the guest. The underlying .vmdk pointer files are left
-# alone (harmless, and reused later if the same disk comes back).
-detach_all_ahci_disks() {
-  local info p line val
+# disk showing up in the guest. Sweeping only the target controller is not
+# enough: the same physical drive moved from AHCI to PIIX4, which is exactly
+# what comparing the two controllers does, would otherwise remain attached in
+# both places and enumerate twice in the guest, shifting SpinRite's BIOS drive
+# numbering underneath a command written against the previous enumeration. The
+# underlying .vmdk pointer files are left alone (harmless, and reused later if
+# the same disk comes back).
+detach_stale_media() {
+  local info ctl p d line val
   info=$(VBM showvminfo "$VM_NAME" --machinereadable)
-  for (( p=0; p<port_count; p++ )); do
-    line=$(printf '%s\n' "$info" | grep "^\"$CONTROLLER-$p-0\"=" || true)
-    [ -n "$line" ] || continue
-    val=$(printf '%s\n' "$line" | sed -E 's/^[^=]+="?//; s/"$//')
-    if [ -n "$val" ] && [ "$val" != "none" ]; then
-      log "Detaching stale medium from $CONTROLLER port $p: $val"
-      VBM storageattach "$VM_NAME" --storagectl "$CONTROLLER" --port "$p" --device 0 --type hdd --medium none
-    fi
+  for ctl in "$AHCI_CONTROLLER" "$IDE_CONTROLLER"; do
+    while read -r p d; do
+      [ -n "$p" ] || continue
+      line=$(printf '%s\n' "$info" | grep "^\"$ctl-$p-$d\"=" || true)
+      [ -n "$line" ] || continue
+      val=$(printf '%s\n' "$line" | sed -E 's/^[^=]+="?//; s/"$//')
+      if [ -n "$val" ] && [ "$val" != "none" ]; then
+        log "Detaching stale medium from $ctl port $p device $d: $val"
+        VBM storageattach "$VM_NAME" --storagectl "$ctl" --port "$p" --device "$d" --type hdd --medium none
+      fi
+    done < <(controller_slots "$ctl" "$info" || true)
   done
 }
-detach_all_ahci_disks
+detach_stale_media
 
 resolve_byid() {
   local dev="$1" real link best=""
@@ -494,13 +560,14 @@ resolve_byid() {
   printf '%s\n' "$best"
 }
 
-next_free_port() {
-  local info p line
+next_free_slot() {
+  local info slot p d line
   info=$(VBM showvminfo "$VM_NAME" --machinereadable)
-  for (( p=0; p<port_count; p++ )); do
-    line=$(printf '%s\n' "$info" | grep "^\"$CONTROLLER-$p-0\"=" || true)
+  for slot in "${SLOTS[@]}"; do
+    read -r p d <<< "$slot"
+    line=$(printf '%s\n' "$info" | grep "^\"$CONTROLLER-$p-$d\"=" || true)
     if [ -z "$line" ] || printf '%s\n' "$line" | grep -q '"none"'; then
-      printf '%s\n' "$p"
+      printf '%s %s\n' "$p" "$d"
       return 0
     fi
   done
@@ -545,9 +612,10 @@ for dev in "${selected[@]}"; do
     VBM createmedium disk --filename "$vmdk" --format=VMDK --variant RawDisk --property "RawDrive=$byid"
   fi
 
-  port=$(next_free_port) || die "No free $CONTROLLER ports left on $VM_NAME"
-  log "Attaching $vmdk to $CONTROLLER port $port"
-  VBM storageattach "$VM_NAME" --storagectl "$CONTROLLER" --port "$port" --device 0 --type hdd --medium "$vmdk"
+  slot=$(next_free_slot) || die "No free $CONTROLLER slots left on $VM_NAME"
+  read -r port device <<< "$slot"
+  log "Attaching $vmdk to $CONTROLLER port $port device $device"
+  VBM storageattach "$VM_NAME" --storagectl "$CONTROLLER" --port "$port" --device "$device" --type hdd --medium "$vmdk"
 done
 
 log ""
