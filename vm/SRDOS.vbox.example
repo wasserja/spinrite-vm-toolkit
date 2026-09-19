@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<!--
+** Sanitized reference copy of the SRDOS VM definition.
+**
+** This is NOT a drop-in file. It exists to document the VM's shape: 128MB RAM,
+** DOS guest type, and three storage controllers (Floppy / PIIX4-IDE / AHCI-SATA
+** with 3 ports for raw physical disks). See docs/vm-build.md for how to build
+** an equivalent VM from scratch with VBoxManage.
+**
+** Removed relative to a live SRDOS.vbox:
+**   - every raw physical-disk .vmdk MediaRegistry entry and AHCI attachment
+**     (those encode drive model+serial of whatever was last attached, and are
+**     recreated from scratch by bin/spinrite-attach.sh on every run)
+**   - the host MAC address, GUI window geometry and session timestamps
+**
+** The referenced SRDOS-disk001.vdi is the FreeDOS system disk holding the
+** owner's licensed SpinRite. It is deliberately not part of this repo.
+-->
+<VirtualBox xmlns="http://www.virtualbox.org/" version="1.19-linux">
+  <Machine uuid="{00000000-0000-0000-0000-000000000000}" name="SRDOS" OSType="DOS" snapshotFolder="Snapshots">
+    <MediaRegistry>
+      <HardDisks>
+        <HardDisk uuid="{11111111-1111-1111-1111-111111111111}" location="SRDOS-disk001.vdi" format="vdi" type="Normal"/>
+      </HardDisks>
+    </MediaRegistry>
+    <Hardware>
+      <CPU>
+        <PAE enabled="false"/>
+        <LongMode enabled="false"/>
+        <HardwareVirtExLargePages enabled="true"/>
+      </CPU>
+      <Memory RAMSize="128"/>
+      <Display VRAMSize="9"/>
+      <BIOS>
+        <SmbiosUuidLittleEndian enabled="true"/>
+      </BIOS>
+      <UART>
+        <Port slot="0" enabled="true" IOBase="0x3f8" IRQ="4" hostMode="Disconnected"/>
+      </UART>
+      <AudioAdapter controller="SB16" useDefault="true" driver="ALSA" enabled="true" enabledOut="true"/>
+      <Clipboard/>
+      <StorageControllers>
+        <!-- Floppy: left empty. The SpinRite boot floppy is NOT needed for normal use. -->
+        <StorageController name="Floppy" type="I82078" PortCount="1" useHostIOCache="true" Bootable="true"/>
+        <!-- PIIX4 port 0 = FreeDOS C: system disk. Port 1 is kept free for
+             temporarily attaching a DOS utility image (see docs/vm-build.md). -->
+        <StorageController name="PIIX4" type="PIIX4" PortCount="2" useHostIOCache="false" Bootable="true">
+          <AttachedDevice type="HardDisk" hotpluggable="false" port="0" device="0">
+            <Image uuid="{11111111-1111-1111-1111-111111111111}"/>
+          </AttachedDevice>
+        </StorageController>
+        <!-- AHCI: raw physical disks get attached here by bin/spinrite-attach.sh.
+             PortCount caps how many disks one run can handle - raise it if you
+             routinely test more drives at once. -->
+        <StorageController name="AHCI" type="AHCI" PortCount="3" useHostIOCache="false" Bootable="true" IDE0MasterEmulationPort="0" IDE0SlaveEmulationPort="1" IDE1MasterEmulationPort="2" IDE1SlaveEmulationPort="3"/>
+      </StorageControllers>
+    </Hardware>
+  </Machine>
+</VirtualBox>

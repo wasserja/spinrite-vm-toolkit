@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------------------
+# Never commit anything that carries the licensed SpinRite binaries, real
+# hardware identifiers, or host/session state.
+# ---------------------------------------------------------------------------
+
+# VM disk images. SRDOS-disk001.vdi holds the owner's licensed SpinRite.
+*.vdi
+*.vhd
+*.qcow2
+
+# Raw physical-disk pointers. Filenames encode drive model + serial, and the
+# descriptors bake in a specific host's device nodes. spinrite-attach.sh
+# recreates these on every run.
+*.vmdk
+
+# Bootable utility images (SpinRite.img, FreeDOS install media, ISOs).
+*.img
+*.iso
+
+# Backup tarballs produced by bin/spinrite-backup.sh. These intentionally
+# contain the VDI, the real tracker CSV and Claude memory files.
+*.tar.gz
+*.tgz
+spinrite-backups/
+
+# The real run tracker: drive serials and computer service tags.
+# Ship examples/spinrite-tracker.example.csv instead.
+spinrite-tracker.csv
+
+# Claude Code host state: session history, settings, and .credentials.json.
+.claude/
+.claude.json
+
+# VirtualBox host/session leftovers
+*.vbox-prev
+Logs/
+VBox.log*
+
+# Editor / OS noise
+*~
+*.swp
+.DS_Store
+__pycache__/
+*.pyc

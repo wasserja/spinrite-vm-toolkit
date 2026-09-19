@@ -1,0 +1,15 @@
+# Desktop launcher for spinrite-attach.sh.
+#
+# .desktop files do NOT expand $HOME or ~ in Exec=, so the path below must be
+# absolute. Edit YOUR_USER to match, copy to ~/Desktop/, then mark it trusted
+# (right-click the icon in Dolphin/Plasma and allow launching) before it will
+# run. Terminal=true is required: the script asks for a typed "yes" before it
+# unmounts anything.
+[Desktop Entry]
+Type=Application
+Name=SpinRite Attach
+Comment=Discover physical disks, attach to SRDOS VM, and launch SpinRite
+Exec=/home/YOUR_USER/bin/spinrite-attach.sh
+Icon=drive-harddisk
+Terminal=true
+Categories=System;
