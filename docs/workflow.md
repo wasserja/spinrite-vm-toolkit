@@ -140,8 +140,29 @@ The full keystroke-driven menu sequence, for when you need it, is documented in
 rs
 ```
 
-Compare against the step 4 baseline. `docs/field-notes.md` covers what an
-unchanged uneven profile means versus a real improvement.
+**Capture this table too, before typing anything else.** Same one-shot screen as
+step 4 — and this is the one you just waited hours for. Screenshot it, or read the
+five numbers off it into the tracker now.
+
+The durable fallback is on the guest: every run also writes `C:\RS0NN.TXT`, numbered
+sequentially, so a lost screen is recoverable by mounting the FreeDOS disk from the
+host (`docs/vm-build.md`) — but that needs the VM powered off, which means ending
+the session. Cheaper to screenshot.
+
+Compare against the step 4 baseline, ReadSpeed to ReadSpeed only. SpinRite's own
+before/after benchmark is a different access path and is not comparable to these
+numbers — `docs/field-notes.md` covers that, and what an unchanged uneven profile
+means versus a real improvement.
+
+Both sets of numbers have a home in the tracker, in the format its columns expect
+(`docs/tracking.md`):
+
+- **ReadSpeed** — five semicolon-separated MB/s values, at 0/25/50/75/100% of the
+  drive, from this screen and the step 4 one.
+- **SpinRite's own benchmark** — three values (front, midpoint, end), which the
+  `both` token wrote into `C:\SRLOGS\<N>.LOG` during step 5. You do not have to
+  transcribe those now; pull the log after powering the VM off and fill them in with
+  `spinrite-track.py update`.
 
 ## 7. Record the run
 
@@ -149,11 +170,27 @@ unchanged uneven profile means versus a real improvement.
 ~/bin/spinrite-track.py add \
   --disk-model "..." --disk-serial "..." --capacity "1TB NVMe" \
   --connection native-nvme --action "SpinRite Level 3" \
-  --rs-before "..." --rs-after "..." \
+  --rs-before "1375.4;1165.5;2210.0;1154.3;1321.1" \
+  --rs-after  "1776.8;1339.8;1905.3;1342.4;1681.4" \
+  --sr-bench-before "603.447;610.234;609.410" \
+  --sr-bench-after  "608.315;609.716;601.603" \
   --result "Clean, 0 defects" --duration 2:12:26
 ```
 
 Computer make/model/serial are auto-detected via `dmidecode` if omitted.
+
+The SpinRite benchmark pair comes out of the run log, which needs the VM powered
+off — so it is normal to log the row now with the ReadSpeed numbers and fill the
+rest in afterwards:
+
+```
+~/bin/spinrite-track.py update --disk-serial SERIAL \
+  --set spinrite_bench_before="603.447;610.234;609.410" \
+  --set spinrite_bench_after="608.315;609.716;601.603"
+```
+
+Log interrupted runs too, with the percentage reached in `--result`. An interrupted
+run is exactly the thing you will want to know about next time.
 
 ## 8. Back up the stick
 

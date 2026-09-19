@@ -39,16 +39,25 @@ The order matters. Steps 1-2 are cheap and stop you wasting hours.
 6. **Run SpinRite Level 3**, one command per drive:
    `SPINRITE auto level 3 both exit noramtest bios <port>`. See "SpinRite via the
    command line" below.
-7. **Re-run ReadSpeed** (`rs`) and compare against step 5.
+7. **Re-run ReadSpeed** (`rs`) and compare against step 5. **Screenshot this table
+   before sending any other key** — same one-shot screen, and it is the result of a
+   multi-hour pass. Compare ReadSpeed to ReadSpeed only, never to SpinRite's own
+   benchmark.
 8. **Pull the run log.** `C:\SRLOGS\<N>.LOG` holds the before/after SpinRite
-   benchmark and the defect count. Read it from the host with the recipe in
-   "Reading files off the guest" (VM must be powered off).
-9. **Record the run.** `~/bin/spinrite-track.py add --disk-model ... --disk-serial ...
-   --capacity ... --connection native-nvme --action "SpinRite Level 3"
-   --rs-before ... --rs-after ... --sr-bench-before ... --sr-bench-after ...
-   --result "Clean, 0 defects" --duration 2:12:26`. Computer identity auto-fills from
-   `dmidecode`. Log interrupted runs too — that is exactly what you will want next
-   time. Details: `docs/tracking.md`.
+   benchmark (from the `both` token) and the defect count. Read it from the host with
+   the recipe in "Reading files off the guest" (VM must be powered off).
+9. **Record the run.** Four benchmark values per drive, in the formats the tracker's
+   columns expect: ReadSpeed before/after as five semicolon-separated MB/s values
+   (0/25/50/75/100%), SpinRite's as three (front;mid;end).
+   `~/bin/spinrite-track.py add --disk-model ... --disk-serial ... --capacity ...
+   --connection native-nvme --action "SpinRite Level 3" --rs-before ... --rs-after ...
+   --sr-bench-before ... --sr-bench-after ... --result "Clean, 0 defects"
+   --duration 2:12:26`. Computer identity auto-fills from `dmidecode`. The SpinRite
+   pair needs the VM off, so logging the row with the ReadSpeed numbers first and
+   filling the rest in with `spinrite-track.py update --disk-serial SERIAL --set
+   spinrite_bench_after="..."` is normal. Log interrupted runs too, with the
+   percentage reached — that is exactly what you will want next time. Details:
+   `docs/tracking.md`.
 10. **Back up the stick.** `~/bin/spinrite-backup.sh` writes a timestamped tarball to
     `~/spinrite-backups/` for the user to upload. It contains their licensed
     SpinRite — it never goes in a public repo.
@@ -217,8 +226,10 @@ so sleep ~10-15s and screenshot rather than polling.
 
 The results table (drive number, size, identity, MB/s at 0/25/50/75/100% of the
 drive) stays on screen until the next command clears it — **screenshot before typing
-anything else.** Results also accumulate as `C:\RS0NN.TXT`, one file per run. How to
-read the numbers: `docs/field-notes.md`.
+anything else.** This applies to the after-pass run as much as the baseline; losing
+it costs the whole comparison. Results also accumulate as `C:\RS0NN.TXT`, one file
+per run, recoverable from the host only once the VM is powered off. How to read the
+numbers: `docs/field-notes.md`.
 
 ## Attaching disks and images by hand
 
