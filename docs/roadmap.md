@@ -166,11 +166,46 @@ The open questions are what make this worth doing carefully rather than quickly:
   makes it a property of the drive's controller or flash layout rather than a
   defect. The tracker already knows which drives have passed; the rule has to
   consult it instead of re-recommending the same drive forever.
+- **The rule may need to recommend *nothing*, and that is now the likeliest
+  outcome for a clean SSD.** Tested directly on 2026-09-19: a genuine slow region
+  (confirmed on both controllers) was given the bounded pass this item proposes to
+  emit, and came back **8-9% slower on both paths** with zero defects found
+  (`docs/field-notes.md`). One drive, one region, one pass -- but it inverts the
+  premise. Before this becomes an `advise` verb that tells someone to spend hours
+  rewriting, it needs to answer whether a pass on a defect-free solid-state region
+  ever *helps*, because right now the only controlled measurement says it hurts.
 
 Natural home: a new verb on `bin/spinrite-track.py`, which already owns the
 benchmark columns and the per-drive history — something like
 `spinrite-track.py advise --disk <serial>`, printing either "no pass needed" or
 the bounded command to run.
+
+## Find out whether the post-pass slowdown recovers
+
+A bounded Level 3 over a clean NVMe's slow region left it reading 8-9% slower on
+both controllers (2026-09-19, `docs/field-notes.md`). Unknown, and cheap to learn:
+**does it come back?** An SSD may re-optimise over hours or days of normal use, or
+during idle garbage collection, in which case the measurement above is a transient
+cost rather than a permanent one -- which changes the advice completely.
+
+The drive is this machine's own system disk (SK hynix HFS256GEM9X169N, S/N
+5SE4N503314104K5B), so it is reachable again on any later visit. Roughly 5 minutes:
+
+```
+~/bin/spinrite-attach.sh attach 5SE4N503 --controller ahci --yes
+#   in the guest: rs, three times; then --controller ide and rs three times
+```
+
+Compare the 25% point against the post-pass medians (AHCI 1579.9, IDE 381.0) and
+the pre-pass ones (AHCI 1743.3, IDE 415.2). Worth doing after the machine has been
+running Windows normally for a while, not straight off a cold boot.
+
+Two things to settle at the same time:
+
+- Whether the *other* four points stayed where they were, which is what makes the
+  25% reading attributable to the pass rather than to drift.
+- Whether the SLC-cache-folding hypothesis in `docs/field-notes.md` predicts
+  recovery at all. If the data is now in TLC it may simply stay there.
 
 ## Target a Level 3 pass at a bounded region of a drive
 

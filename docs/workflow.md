@@ -156,6 +156,28 @@ single-tasking), so nothing is lost.
 Level 3's on-screen warning that it is "NOT recommended for SSDs, Hybrid, or SMR
 drives" is about it being a read+write rewrite pass. Running it on SSDs/NVMe as a
 deliberate maintenance practice is a judgment call — know what you are choosing.
+**On 2026-09-19 a bounded Level 3 over a clean NVMe's slow region left that region
+reading 8-9% slower, confirmed on both controllers** (`docs/field-notes.md`). Read
+that before running one on a solid-state drive to "fix" a ReadSpeed dip.
+
+### Measure on AHCI, rewrite on IDE
+
+ReadSpeed and SpinRite reach the disk by different paths, so the controller that
+measures best and the controller that works fastest need not be the same one —
+and `spinrite-attach.sh --controller` makes switching a flag. For a long pass:
+
+1. Attach `--controller ahci`, take the ReadSpeed baseline (several runs — one is
+   inside the noise floor, see step 4).
+2. Power off, attach `--controller ide`, run the Level 3 pass there. It is
+   **2.08x-2.58x faster**, which on a 1 TB drive is hours rather than minutes.
+3. Power off, attach `--controller ahci` again for the after-ReadSpeed, so the
+   before/after pair is comparable to itself and to every existing tracker row.
+
+The one cost: `both` writes its benchmark on whichever controller the *pass* runs
+on, so a pass run on IDE produces an IDE benchmark pair, which is not comparable
+to the AHCI benchmark columns of earlier rows. Keep the SpinRite pair as its own
+per-controller series, or run short passes on AHCI when that comparability matters
+more than the runtime.
 
 The full keystroke-driven menu sequence, for when you need it, is documented in
 `skills/virtualbox-dos-vm/SKILL.md`.
@@ -169,6 +191,13 @@ rs
 **Capture this table too, before typing anything else.** Same one-shot screen as
 step 4 — and this is the one you just waited hours for. Screenshot it, or read the
 five numbers off it into the tracker now.
+
+**Run it more than once.** A single ReadSpeed reading cannot beat its own noise:
+measured spreads reach 34.5% per point on AHCI and 15.3% on IDE
+(`docs/field-notes.md`). Three runs and a median cost about a minute. Results also
+accumulate as `C:\RS0NN.TXT`, so a batch of runs can be harvested from the host
+afterwards instead of screenshotting each one — order them by the
+`Benchmarked: <day>, <date> at <time>` line inside each file, never by host mtime.
 
 The durable fallback is on the guest: every run also writes `C:\RS0NN.TXT`, numbered
 sequentially, so a lost screen is recoverable by mounting the FreeDOS disk from the

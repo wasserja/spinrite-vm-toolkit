@@ -185,6 +185,62 @@ For the record, 24 Level 3 passes' worth of rewriting (8 runs x 11.92 GiB = 95 G
 over the same region produced no measurable degradation and no defects, and the
 drive's SMART `Media and Data Integrity Errors` stayed at 0.
 
+### A Level 3 pass made a clean NVMe's slow region 8-9% SLOWER, 2026-09-19
+
+The strongest test yet of "uneven ReadSpeed means run SpinRite", and it came out
+against the practice.
+
+The SK hynix 256 GB NVMe above reads ~49% (AHCI) / ~66% (IDE) low at its 25% sample
+point, on both access paths -- by the cross-controller rule, a genuine slow region
+rather than an artifact. So it got the treatment the rule prescribes: a Level 3 pass
+bounded to **12.5-37.5%** (the midpoints to each neighbouring sample, 59.62 GiB,
+verified at the block layer), with **three ReadSpeed runs per controller on each
+side** rather than one.
+
+| ReadSpeed point | AHCI before | AHCI after | | IDE before | IDE after | |
+|---|---|---|---|---|---|---|
+| 0% | 2596.5 | 2604.9 | +0.3% | 1162.8 | 1192.9 | +2.6% |
+| **25%** | **1743.3** | **1579.9** | **-9.4%** | **415.2** | **381.0** | **-8.2%** |
+| 50% | 3445.8 | 3484.9 | +1.1% | 1190.3 | 1239.0 | +4.1% |
+| 75% | 2868.5 | 2901.7 | +1.2% | 751.7 | 761.8 | +1.3% |
+| 100% | 2445.7 | 2517.6 | +2.9% | 587.6 | 588.7 | +0.2% |
+
+SpinRite found **0 defects and 0 DynaStat recoveries**, and its own whole-drive
+benchmark barely moved (619.2 -> 623.0 MB/s midpoint) -- but that benchmark samples
+front/mid/end, i.e. 0/50/100%, all *outside* the treated band.
+
+**The 25% sample is the only one of the five inside the rewritten band, and it is
+the only one that moved.** Everything outside held steady or drifted slightly up.
+Within-block spread was 0.9% (AHCI) and 0.5% (IDE), so an 8-9% drop is far outside
+the noise, and two independent access paths agree on it.
+
+That pattern also **rules out thermal throttling**, the obvious alternative
+explanation for a drive that had just done 60 GiB of read+write: throttling would
+depress all five points, not only the treated one.
+
+A third, independent signal agrees the region is genuinely slow: Level 3 rewrote it
+at **161.9 MB/s** effective, against **196.9 MB/s** for the 75-80% region on the
+same controller and method -- 17.8% slower to write, matching the direction of the
+read dip.
+
+**Why it might get slower is not established.** The plausible mechanism is that
+rewriting 60 GiB at once overruns the drive's SLC write cache, so data is folded
+into TLC and subsequently read from there, where before the pass some of it may
+have been sitting in a faster state. That is a **hypothesis, not a measurement** --
+nothing here tests it.
+
+What the result does support, carefully bounded to one drive, one region, one pass:
+
+- **A slow region on a defect-free SSD/NVMe is not necessarily repairable, and the
+  attempt can cost read speed.** Level 3's own warning that it is not recommended
+  for solid-state drives looks better founded than the "refresh rejuvenates it"
+  framing this toolkit has been operating on.
+- **A pass that finds zero defects has still changed the drive.** "0 defects" is
+  not the same as "no effect" -- it only means SpinRite corrected nothing.
+- Worth knowing and untested: **whether this recovers.** The drive may re-optimise
+  over hours or days of normal use, or on idle garbage collection. Re-measuring
+  this same drive later is the cheapest experiment on the roadmap.
+
 ### Two bounded-pass questions, answered
 
 - **The log distinguishes a bounded pass from a full one.** Every bounded run wrote
