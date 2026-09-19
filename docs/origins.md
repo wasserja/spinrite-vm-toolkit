@@ -7,13 +7,39 @@ physical disks.
 
 ## Upstream source
 
-The live-USB build and the "Linux as base OS" approach come from this two-part
-forum series — read these first, they are the foundation:
+The live-USB build and the "Linux as base OS" approach come from this forum
+series — read these first, they are the foundation:
 
 - **Part 3a of 5 — Linux as base OS**
   https://forums.grc.com/threads/how-to-run-spinrite-on-a-uefi-only-machine-part-3a-of-5-linux-as-base-os.1617/
 - **Part 3b of 5 — Linux as base OS**
   https://forums.grc.com/threads/how-to-run-spinrite-on-a-uefi-only-machine-part-3b-of-5-linux-as-base-os.1618/
+- **Part 5a of 5 — using the pre-built VM**
+  https://forums.grc.com/threads/how-to-run-spinrite-on-a-uefi-only-machine-part-5a-of-5-using-pre-built-vm.1619/
+
+### Don't build the DOS VM by hand — import the pre-built one
+
+Part 5a offers a ready-made VirtualBox appliance, `SRDOS.OVA` (~1 MB),
+containing GRC-customized FreeDOS with ReadSpeed (`rs.exe`) already installed.
+`File | Import Appliance` in VirtualBox and you are done. The VM this repo
+assumes — name `SRDOS`, disk `SRDOS-disk001.vdi` — is that appliance.
+
+`docs/vm-build.md` documents building the VM from scratch anyway, because it is
+worth understanding what the appliance actually is, and because the pieces
+(controller layout, raw-image attachment, host-side FAT mounting) are the same
+ones you need for maintenance either way. But importing is the fast path.
+
+Two things to know about the appliance:
+
+- **The SpinRite on it is not usable.** It ships an old pre-release build that
+  displays a "buy your own copy" banner. Replace it with your own licensed
+  `SPINRITE.EXE` — see `docs/vm-build.md`.
+- **It is hosted on a personal OneDrive link posted in that thread**, not on
+  grc.com, and no checksum is published with it. Forum replies mention having to
+  adjust the OVA's manifest hash for compatibility with newer VirtualBox
+  releases, so read the thread's replies if the import fails. Keep your own copy
+  of the OVA once you have a working one — `bin/spinrite-backup.sh` already
+  archives the live VM, which serves the same purpose.
 
 General upstream references:
 

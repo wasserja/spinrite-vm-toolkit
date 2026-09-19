@@ -1,5 +1,11 @@
 # Building the SRDOS FreeDOS VM
 
+> **Faster path first:** GRC forums part 5a offers a pre-built appliance,
+> `SRDOS.OVA` (~1 MB), with FreeDOS and ReadSpeed already installed — import it
+> with `File | Import Appliance` and skip to "Getting SpinRite onto C:" below.
+> See `docs/origins.md` for the link and its caveats. Build from scratch if you
+> want to understand the machine, or if the appliance won't import.
+
 `bin/spinrite-attach.sh` expects a VirtualBox VM named `SRDOS` with a specific
 controller layout. `vm/SRDOS.vbox.example` is a sanitized copy of a working
 definition — it documents the shape, but it is not a drop-in file (the licensed
