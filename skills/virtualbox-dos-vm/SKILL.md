@@ -38,6 +38,10 @@ The order matters. Steps 1-2 are cheap and stop you wasting hours.
    `attach S0EXAMPLE000001`. Prefer the serial whenever the list came from the
    tracker or from an earlier session: device letters reassign every boot, serials
    do not. 4+ characters, and it must match exactly one drive or the script refuses.
+   `--controller ahci|ide` picks which controller they land on (default `ahci`;
+   `ide` = PIIX4, where Level 3 runs ~2-2.6x faster — see "Choosing a controller").
+   Either way the script first clears **both** controllers, so a drive moved
+   between them can never enumerate twice.
 5. **Baseline with ReadSpeed.** At the `C:\>` prompt: `rs`. See "ReadSpeed" below.
    **Capture the results before typing anything else** — the table is only on screen.
 6. **Run SpinRite Level 3**, one command per drive:
@@ -248,6 +252,25 @@ Main Menu. Unlike the `BOTH` token, this benchmark is **not** written to the log
 `megabytes: remaining/completed` figures reset per drive, so match remaining+completed
 against known capacities to tell which drive is active; the ETA covers only that one.
 
+## Choosing a controller
+
+`--controller ahci` (default) or `--controller ide`. They are not equivalent, and
+the choice changes what the numbers mean:
+
+| | AHCI | IDE (PIIX4) |
+|---|---|---|
+| Level 3 speed | baseline | **2.08x (SATA) / 2.58x (NVMe) faster** |
+| ReadSpeed | **faster, flatter** | slower, steeper |
+| ReadSpeed repeatability | 7.6-34.5% spread | 2.1-15.3% |
+| Drive identity in `list` | `....` | populated (but synthetic) |
+| Selector | `bios <n>`, `port <n>`, `type bios` | same `bios <n>` works |
+| Slots | 3 (portcount, raisable) | 3 (fixed, C: takes the 4th) |
+
+**The default stays AHCI** because every tracker row was measured on it and a
+before/after pair is only comparable within one controller. Use `ide` when the
+runtime of a long pass matters more than comparability, or when measuring the two
+against each other. Full numbers: `docs/field-notes.md`.
+
 ## ReadSpeed
 
 Normally the user runs this themselves (see `docs/workflow.md`). When asked to do it:
@@ -314,6 +337,13 @@ dangling entry in `VBoxManage list hdds` forever. Clear an old one with
 This minimal FreeDOS has no `FIND.EXE`/`MORE.COM`, so a log cannot be paged or
 grepped from inside DOS — pull it to the host for anything beyond what a `type`
 dump's last screenful shows.
+
+**The first command typed after SpinRite's `exit` returns is swallowed.**
+Reproducible across several cycles on 2026-09-19: `keyboardputstring "rs"` + Enter
+straight after a run exits leaves the prompt untouched — no `rs` echoed, nothing
+run. Sending it a second time works every time. Screenshot to confirm the command
+actually echoed before trusting a blank result, and treat "the screen still shows
+the previous output" as a dropped keystroke rather than a finished run.
 
 **Do not pick the newest `RS0NN.TXT` by its host-side mtime.** The FAT directory
 timestamps the guest writes are offset from wall-clock time (observed 4 hours out
@@ -392,6 +422,17 @@ through recovery for hours while a natively-attached drive in the same run sails
 through, suspect the bridge, and confirm with `smartctl -a /dev/sdX` after reseating.
 Short ReadSpeed checks through such an enclosure are fine; for a full Level 3 pass,
 connect the drive natively. Details: `docs/troubleshooting.md` §5.
+
+**Do not verify a Windows disk with `ntfsfix` — it may be BitLocker-encrypted.**
+On a BitLocker volume `ntfsfix -n` reports `NTFS signature is missing` /
+`Volume is corrupt. You should run chkdsk.` That is the tool being handed
+ciphertext, **not** damage from the pass. Check with `blkid` (reports
+`TYPE="BitLocker"`) or the `-FVE-FS-` magic at offset 3 of the partition. To
+confirm a pass did no harm on such a disk: partition table unchanged
+(`fdisk -l`), the `-FVE-FS-` header still present, the EFI partition still
+mountable, any plain-NTFS recovery partition still passing `ntfsfix -n`, and
+SMART `Media and Data Integrity Errors` still 0. Ultimately, only booting Windows
+proves it.
 
 **Live throughput sanity check** on a raw disk mid-pass, without touching the VM:
 

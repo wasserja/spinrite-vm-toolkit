@@ -33,11 +33,12 @@ What to find out while doing it:
 
 ## Decide whether to move physical disks from AHCI to IDE
 
-**The measurement is done** (2026-09-19, `docs/field-notes.md`): SpinRite's Level 3
-runs **2.08x faster** on `PIIX4`/IDE than on `AHCI` — 179 s versus 372 s over the
-same 25,605 MB region of the same SSD — because its native ATA driver engages
-instead of the BIOS path. What is left is the decision, which one drive on one
-machine does not settle.
+**The measurement is done, twice** (2026-09-19, `docs/field-notes.md`): SpinRite's
+Level 3 runs **2.08x faster** on `PIIX4`/IDE than on `AHCI` on a SATA SSD (179 s
+versus 372 s), and **2.58x faster** on an NVMe (24 s versus 62 s, median of three
+alternated legs each). Its native ATA driver engages instead of the BIOS path. Two
+drives on two buses agree and the per-leg timings barely vary, so the effect is no
+longer in doubt. What is left is the decision.
 
 The capacity argument that justified AHCI is weaker than it looked. `PIIX4` has
 2 ports x 2 devices = 4 slots, one taken by the FreeDOS `C:` disk, leaving **3** —
@@ -45,49 +46,39 @@ exactly what `AHCI` is configured for today. So at the current setting IDE costs
 nothing in drive count and halves the runtime. AHCI only wins if its portcount can
 actually go past 3, which is itself unverified (see the PortCount item below).
 
-### Queued: repeat the measurement on an NVMe (next machine with a spare one)
+### Done: repeated on an NVMe, 2026-09-19 -- the result got bigger
 
-The SATA result may not generalize, and the tracker is the reason to doubt it. The
-Toshiba SATA SSD benchmarked **184 / 207 / 143 MB/s** through the AHCI BIOS path,
-but NVMe drives already in the tracker reach **600-724 MB/s** through that same
-path (Samsung 980 1TB, 970 EVO Plus 2TB). They are plainly not hitting the ceiling
-the SATA drive hit, so the headroom IDE recovered may simply not be there.
+**The SATA finding generalizes.** One SK hynix HFS256GEM9X169N (238.5 GB NVMe),
+three Level 3 legs per controller, alternating A/I/A/I/A/I, same bounded region
+(`75.0 80.0`, 11.92 GiB verified at the block layer on every leg):
+**IDE is 2.58x faster** -- 24 s median against 62 s -- versus 2.08x on the SATA
+drive.
 
-Roughly 15 minutes, on any machine with an NVMe that is not the repo disk:
+The doubt recorded here, that NVMe drives reaching 600-724 MB/s through the AHCI
+BIOS path were nowhere near the ceiling the SATA drive hit, was wrong. The BIOS
+path caps this drive at ~197 MB/s effective while SpinRite's own ATA driver
+sustains ~509 MB/s over the identical region. Full numbers in
+`docs/field-notes.md`.
 
-```
-~/bin/spinrite-attach.sh attach <serial-substring> --yes     # lands on AHCI
-#   in the guest:
-SPINRITE list exit noramtest                                  # expect Type BIOS
-rs                                                            # ReadSpeed, screenshot
-spinrite auto level 3 exit noramtest bios 81 75.0 80.0        # time it
+Two things settled on the way past:
 
-#   then, VM off, move the SAME .vmdk to IDE and repeat identically:
-VBoxManage storageattach SRDOS --storagectl AHCI  --port 0 --device 0 --type hdd --medium none
-VBoxManage storageattach SRDOS --storagectl PIIX4 --port 1 --device 0 --type hdd --medium <the .vmdk>
-#   expect Type to flip to ATA / Port SM, with Model+Serial populated
-```
+- **The benchmark predicts pass throughput better than feared.** Level 3 ran at 32%
+  of SpinRite's own midpoint benchmark here (197 against 622 MB/s), close to the
+  37% seen on the SATA drive. That ratio looks stable enough to estimate from --
+  unlike SpinRite's on-screen ETA, which the tracker records missing by 2.7x.
+- **Level 3 timing barely varies.** Three AHCI legs took 62 s each. Whatever makes
+  a multi-hour full pass overrun its estimate, it is not run-to-run noise in the
+  pass itself.
 
-Record wall-clock for each Level 3 leg and cross-check against the host's
-`awk '{print $7}' /sys/block/<dev>/stat` delta, which should equal the region size
-on both legs (it did here: 25.6 GB each, exactly 5% of 512 GB).
+`bin/spinrite-attach.sh` now takes `--controller ahci|ide`, so switching is a flag
+rather than a source edit and the two can be compared without hand-run
+`storageattach` commands. The **default is still AHCI**. What stands between the
+measurement and changing that default:
 
-Two traps from doing it the first time: use `--type gui` via the detached `nohup`
-form, and do **not** leave a `showvminfo` wait-loop polling, or `startvm` fails with
-"already locked by a session" (`docs/troubleshooting.md` §2 and §2a).
-
-One more thing worth capturing while there: today's Level 3 ran at 68.8 MB/s
-effective against a 184 MB/s read benchmark, ~37%. Applying that ratio to the 980's
-600 MB/s predicts a 1 TB pass in ~1h15m, but the tracker records 4:16:14. So the
-benchmark is a poor predictor of pass duration and something else dominates a long
-run. Whatever that is, it may matter more than the controller.
-
-Before changing `CONTROLLER` in `bin/spinrite-attach.sh`:
-
-- Repeat on at least one spinning disk and one NVMe — the NVMe leg is queued above
-  with a ready-to-run procedure. The DynaStat behaviour the forum reply describes
-  only appears on drives with real errors, where the reply claims AHCI wins;
-  untested here, since this drive was clean.
+- **A spinning disk has never been measured.** Both data points are solid state.
+- **Neither drive had a single defect.** The forum reply arguing AHCI wins is
+  specifically about drives *with* errors, where DynaStat recovery dominates and
+  the access path may matter differently there. Completely untested.
 - Confirm 3 drives attach and enumerate correctly across `PIIX4` port 0 device 1,
   port 1 device 0 and port 1 device 1. Only single-drive IDE has been exercised.
 - Decide what happens to ReadSpeed. It reads *faster* on AHCI (flat ~460 MB/s versus
@@ -138,13 +129,30 @@ The shape of it:
 
 The open questions are what make this worth doing carefully rather than quickly:
 
-- **What threshold?** Unknown, and a single reading is not enough to set one. The
-  512 GB SATA M.2 in the reference machine measured its 100% point **17% below**
-  the other four on 2026-09-19, and **~10% below** on the same drive, same
-  machine, a few hours later with no pass in between (384.3 then 417.8 MB/s,
-  against ~460-466 across the rest). So run-to-run variance is real and a rule
-  that fires on one sample will fire inconsistently. The rule may need to require
-  a repeat measurement before recommending hours of rewriting.
+- **What threshold? Bigger than you think — the noise floor is now measured.**
+  Repeating ReadSpeed on one clean NVMe the same afternoon (8 runs on AHCI, 6 on
+  IDE, `docs/field-notes.md`) gave per-point run-to-run spreads of **7.6% to 34.5%
+  on AHCI** and 2.1% to 15.3% on IDE. The worst AHCI point moved **34.5%** on a
+  drive with zero defects that had not changed. That is *twice* the 17% dip this
+  item was originally written to catch, so a threshold anywhere near 17% would fire
+  almost entirely on noise.
+
+  Three things follow, and they change the design rather than just the number:
+
+  1. **Require repeats.** A single reading cannot distinguish a slow region from
+     the instrument. The rule should take a median of N runs, not one sample.
+  2. **Use cross-controller agreement as the real signal.** The test drive's 25%
+     point sat 49% below its 50% point on AHCI *and* 66% below on IDE. Two
+     unrelated access paths agreeing cannot be an artifact of either one. Now that
+     `spinrite-attach.sh --controller` makes the second measurement cheap, "dips on
+     both paths" is a far stronger trigger than any single-path threshold — and it
+     does not need a threshold calibrated per bus.
+  3. **Consider driving the rule from SpinRite's benchmark instead.** On the same
+     drive and session it repeated to within **1.7-2.0%** on AHCI, against
+     ReadSpeed's 7.6-34.5%. It only gives three points (front/mid/end) rather than
+     five, and it costs a SpinRite invocation, but it is an order of magnitude
+     quieter. A rule built on a noisy instrument will spend hours of rewriting on
+     measurement error.
 - **A sample point is a spot, not a region.** ReadSpeed measures at five
   locations; a dip at the 75% sample does not establish where the slow region
   starts or ends. Scanning the midpoints to each neighbour (62.5-87.5% for a bad
@@ -199,13 +207,18 @@ What to find out:
   form has been exercised.
 - Whether `100.0` as an end bound behaves like any other value — the Main Menu help
   says resumption works "other than 0% and 100%", which hints those two are special.
-- Whether the `both` benchmark still means anything on a bounded pass, or whether it
-  benchmarks the whole drive regardless — which would break the before/after pairing
-  the tracker stores.
+- ~~Whether the `both` benchmark still means anything on a bounded pass.~~
+  **Answered 2026-09-19: it benchmarks the whole drive regardless of the range.**
+  A pass bounded to 75-80% still logs front / midpoint / end of drive. So the
+  before/after pairing the tracker stores stays comparable with full-pass rows —
+  but it is *not* a measurement of the bounded region, and must not be read as one.
 - Whether `#<startsector>` and the percentage form can be mixed.
-- Whether the log entry in `C:\SRLOGS\<N>.LOG` distinguishes a bounded pass from a
-  full one. If it does not, the range has to go in the tracker's `notes` column, or a
-  later reader will take a "Clean, 0 defects" row for a full pass.
+- ~~Whether the log entry distinguishes a bounded pass from a full one.~~
+  **Answered 2026-09-19: it does.** A bounded run logs
+  `From  75.0000% sect: 375,088,640      To  80.0000% sect: 400,094,552`, where a
+  whole-drive run reads `From   0.0000% sect: 0  To 100.0000% sect: ...`. The
+  tracker's `action`/`notes` columns should still say so, since nobody consults the
+  log before reading the row.
 
 ## Raise `AHCI` PortCount past 3 and find the guest BIOS ceiling
 

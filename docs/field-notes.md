@@ -15,6 +15,14 @@ normal physics.
 So a dip at one point on an SSD is a signal, not variance. Treat a low outlier as
 a candidate for a SpinRite pass rather than shrugging it off.
 
+**But not from a single run.** Measured repeatedly on 2026-09-19, one ReadSpeed
+point on a clean NVMe moved **34.5% between runs** on the AHCI path — twice the
+size of the 17% dip described below as worth noting. One reading cannot tell a
+slow region from the instrument's own noise. Repeat the measurement, and prefer a
+dip that shows up on *both* controllers, which no single access path's artifact
+can explain. See "ReadSpeed's own noise is bigger than the dips it is used to
+flag" below.
+
 A SATA SSD reads far lower than an NVMe one and that is just the bus, not a
 finding: a 512 GB SATA M.2 measured `465.5 / 461.9 / 460.9 / 463.1 / 384.3` MB/s
 (2026-09-19) — the first four sit right at the SATA III ceiling, and it is the
@@ -99,6 +107,97 @@ drive had none, so that case remains untested.
 **Compare SpinRite-before to SpinRite-after, and ReadSpeed-before to
 ReadSpeed-after. Never across tools.** The tracker stores them in separate columns
 for exactly this reason (`docs/tracking.md`).
+
+### Repeated on an NVMe, 2026-09-19: the SATA result holds, and gets bigger
+
+The SATA measurement above was one drive, one leg each. The doubt recorded on the
+roadmap was that it might not generalize -- NVMe drives reach 600-724 MB/s through
+the AHCI BIOS path where that SATA SSD managed 184, so they looked like they were
+nowhere near the ceiling IDE was recovering. **They are.**
+
+One SK hynix HFS256GEM9X169N (238.5 GB NVMe, this machine's BitLocker-encrypted
+Windows system disk), same bounded region `75.0 80.0` (11.92 GiB, verified at the
+host block layer on every single leg), **three Level 3 legs per controller**, run
+**alternating A/I/A/I/A/I** so thermal and drive-state drift is shared between the
+legs rather than landing on whichever ran second.
+
+| | AHCI | IDE (PIIX4) |
+|---|---|---|
+| SpinRite Type / Port | `BIOS` / 81 | `ATA` / PS |
+| SpinRite Model + Serial | `....` (unreadable) | `VBOX HARDDISK` / `VB8fd2cfb3-…` |
+| SpinRite benchmark, front / mid / end (median of 4) | 367.4 / 622.1 / 627.6 MB/s | **453.2 / 1219.0 / 1229.5 MB/s** |
+| ...its run-to-run spread | 1.8% / 2.0% / 1.7% | 0.9% / 6.2% / 7.4% |
+| **Level 3 over 11.92 GiB** | 62 / 62 / 62 s (**196.9 MB/s**) | **24 / 26 / 24 s (508.7 MB/s)** |
+| ReadSpeed 0/25/50/75/100% (median) | **2670 / 1768 / 3467 / 2854 / 2467** | 1161 / 414 / 1204 / 766 / 586 |
+| Defects found | 0 (4 runs) | 0 (4 runs) |
+
+**IDE is 2.58x faster at Level 3 here, against 2.08x on the SATA drive.** The
+NVMe-has-headroom hypothesis is dead: the BIOS path caps this drive at ~197 MB/s
+effective even though the same drive sustains ~509 MB/s through SpinRite's ATA
+driver. Level 3 timing is also almost perfectly reproducible -- three AHCI legs at
+62 s each -- so the controller effect is far larger than the run-to-run noise.
+
+Both directions of the SATA finding reproduced: SpinRite faster on IDE, ReadSpeed
+faster on AHCI, `MODEL`/`SERIAL` readable only on IDE (and synthetic there).
+Attaching at PIIX4 port 0 device 1 reports Port `PS` rather than the `SM` the SATA
+test saw at port 1 device 0; `bios 81` selects the drive on either controller, so
+the selector does not change when you switch.
+
+Two details only the IDE logs carry: an ATA identity block (`max transfer: ultraDMA
+133 MB/s`, `ultradma modes: 2/6 (33.33 MB/s)`, `sector count: 500,118,192`), absent
+from every AHCI log. **Ignore the advertised UDMA mode** -- it says 33.33 MB/s while
+the same run measures 1.2 GB/s. It describes VirtualBox's emulated PIIX4, not the
+hardware.
+
+### ReadSpeed's own noise is bigger than the dips it is used to flag
+
+This is the finding that changes how the numbers should be read, and it only shows
+up once the same drive is measured repeatedly on the same day.
+
+| ReadSpeed point | AHCI spread over 8 runs | IDE spread over 6 runs |
+|---|---|---|
+| 0% | 11.5% | 13.4% |
+| 25% | 14.2% | **2.1%** |
+| 50% | 10.7% | 10.9% |
+| 75% | **34.5%** | 15.3% |
+| 100% | 7.6% | **2.9%** |
+
+**A single ReadSpeed point on AHCI moved 34.5% across runs of an unchanged, clean,
+zero-defect drive.** For comparison, the dip that `docs/roadmap.md` proposes to
+treat as a pass-worthy signal -- the SATA M.2's 100% mark -- was **17% low**. The
+measurement noise is twice the size of the signal. Any threshold rule that fires on
+one AHCI reading is firing on noise.
+
+Three consequences:
+
+- **Never decide from a single ReadSpeed run.** Repeat it; the repeats cost seconds.
+- **SpinRite's own benchmark is the more stable instrument** -- 1.7-2.0% spread on
+  AHCI against ReadSpeed's 7.6-34.5% on the same drive, same session. It is slower
+  to obtain and measures a different path, but if the question is "has this drive
+  changed", it answers it with far less noise.
+- **A dip on both controllers is the drive; a dip on one is the access path.** This
+  drive's 25% point sits 49% below its 50% point on AHCI *and* 66% below on IDE.
+  Two unrelated access paths agreeing is hard to explain as an artifact of either,
+  so that region is a genuine property of the drive -- and a real candidate for a
+  bounded pass, which is a much stronger basis than one low number on one run.
+
+For the record, 24 Level 3 passes' worth of rewriting (8 runs x 11.92 GiB = 95 GiB)
+over the same region produced no measurable degradation and no defects, and the
+drive's SMART `Media and Data Integrity Errors` stayed at 0.
+
+### Two bounded-pass questions, answered
+
+- **The log distinguishes a bounded pass from a full one.** Every bounded run wrote
+  `From  75.0000% sect: 375,088,640      To  80.0000% sect: 400,094,552`, where a
+  whole-drive run in the same `SRLOGS` directory reads `From   0.0000% sect: 0
+  To 100.0000% sect: 1,953,525,167`. A later reader cannot mistake one for the
+  other, so the range does not have to be carried in the tracker's notes -- though
+  the tracker's `action` column should still say so, since nobody reads the log
+  first.
+- **`both` benchmarks the whole drive regardless of the range.** On a pass bounded
+  to 75-80%, the logged benchmark still reports *front / midpoint / end* of the
+  drive. So a before/after pair stays comparable with full-pass rows, and it is
+  **not** a measurement of the bounded region.
 
 ## SpinRite's initial ETA is not reliable
 
