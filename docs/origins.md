@@ -1,9 +1,15 @@
 # Origins — what this extends
 
-This repo is an extension of an existing, well-documented approach from the GRC
-(Gibson Research Corporation) forums: running SpinRite on a UEFI-only machine by
-using Linux as the base OS and giving a DOS virtual machine raw access to the
-physical disks.
+This repo is an extension of an existing, well-documented approach published on
+the GRC (Gibson Research Corporation) forums: running SpinRite on a UEFI-only
+machine by using Linux as the base OS and giving a DOS virtual machine raw access
+to the physical disks.
+
+**That series, and the VM appliance it offers, are the work of a member of those
+forums — not of GRC.** GRC makes SpinRite and ReadSpeed. Everything else below,
+including the `SRDOS.OVA` this toolkit imports, is community material hosted on a
+community forum. It is not an official GRC release, is not supported by GRC, and
+problems with it belong in the forum thread rather than to GRC.
 
 ## Upstream source
 
@@ -23,8 +29,13 @@ series — read these first, they are the foundation:
 
 ### Don't build the DOS VM by hand — import the pre-built one
 
-Part 5a offers a ready-made VirtualBox appliance, `SRDOS.OVA` (~1 MB),
-containing GRC-customized FreeDOS with ReadSpeed (`rs.exe`) already installed.
+Part 5a offers a ready-made VirtualBox appliance, `SRDOS.OVA` (~1 MB), assembled
+and posted **by the thread's author, a forum member** — not by GRC, and not
+downloadable from grc.com. What is *inside* it is genuinely GRC's: the FreeDOS
+build is GRC's SpinRite-modified FreeDOS (the guest's own boot banner reads
+`Gibson Research Corporation (www.GRC.com) modified for SpinRite`), and ReadSpeed
+(`rs.exe`) is GRC's too. The packaging around them is the forum member's.
+
 The VM this repo assumes — name `SRDOS`, disk `SRDOS-disk001.vdi` — is that
 appliance. `bin/spinrite-vm-build.sh` imports it, checks it against its own
 manifest, and installs your licensed SpinRite onto its `C:`; `File | Import
@@ -41,7 +52,10 @@ Two things to know about the appliance:
   displays a "buy your own copy" banner. Replace it with your own licensed
   `SPINRITE.EXE` — see `docs/vm-build.md`.
 - **It is hosted on a personal OneDrive link posted in that thread**, not on
-  grc.com, and no checksum is published with it. Forum replies mention having to
+  grc.com, and no checksum is published with it. Treat it as you would any binary
+  from a forum post: `bin/spinrite-vm-build.sh` pins the sha256 of the copy this
+  toolkit was tested against, which establishes "the same file I had", not a chain
+  of trust back to anyone. Forum replies mention having to
   adjust the OVA's manifest hash for compatibility with newer VirtualBox
   releases, so read the thread's replies if the import fails. Keep your own copy
   of the OVA once you have a working one — `bin/spinrite-backup.sh` already

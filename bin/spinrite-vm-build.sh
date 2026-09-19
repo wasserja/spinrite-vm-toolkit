@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the SRDOS FreeDOS VM from GRC's pre-built appliance, and put your own
+# Build the SRDOS FreeDOS VM from the pre-built appliance posted by a member of
+# the GRC forums (NOT an official GRC release -- see docs/origins.md), and put your own
 # licensed SpinRite on its C: drive.
 #
 # Both inputs are files YOU supply. This script downloads nothing: the appliance
@@ -15,9 +16,10 @@ BASEFOLDER=""
 ASSUME_YES=0
 SELF="$(basename "$0")"
 
-# sha256 of the SRDOS.OVA this toolkit was built and tested against. GRC
-# publishes no checksum, so this is a "same file I had" check, not a chain of
-# trust -- a mismatch warns, it does not stop the build.
+# sha256 of the SRDOS.OVA this toolkit was built and tested against. The
+# appliance is a forum member's build hosted on a personal OneDrive link, and
+# nobody publishes a checksum for it, so this is a "same file I had" check, not a
+# chain of trust -- a mismatch warns, it does not stop the build.
 KNOWN_OVA_SHA256="f5798a5e8fadf0b2bc042ddf5d10640baeb4d1839a9a7133355db72d410b35c8"
 
 OVA_URL="https://forums.grc.com/threads/how-to-run-spinrite-on-a-uefi-only-machine-part-5a-of-5-using-pre-built-vm.1619/"
@@ -34,7 +36,7 @@ Usage:
   --spinrite <path>  Your licensed SpinRite: either SPINRITE.EXE itself, or the
                      bootable .img the GRC installer writes (mounted read-only,
                      SPINRITE.EXE lifted out of it). Required.
-  --ova <path>       GRC's pre-built appliance. Default: ~/Downloads/SRDOS.ova
+  --ova <path>       The forum-built appliance. Default: ~/Downloads/SRDOS.ova
   --name <name>      VM name to create. Default: $VM_NAME
   --basefolder <dir> Where to put the VM. Default: VirtualBox's own default.
   --yes              Skip the confirmation.
@@ -79,7 +81,8 @@ VBM() {
 if [ ! -f "$OVA" ]; then
   die "No appliance at $OVA.
 
-  GRC's pre-built SRDOS.OVA is linked from forum part 5a:
+  The pre-built SRDOS.OVA (a forum member's build, not an official GRC
+  release) is linked from forum part 5a:
     $OVA_URL
   Download it yourself and pass --ova <path>. This script will not fetch it."
 fi

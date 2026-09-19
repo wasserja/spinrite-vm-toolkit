@@ -63,8 +63,9 @@ licensed copy and place it on the FreeDOS VM's `C:` drive — see
   passthrough) — see [docs/live-usb-setup.md](docs/live-usb-setup.md), and note
   the `disk` change does not take effect the way you expect
   ([docs/troubleshooting.md](docs/troubleshooting.md))
-- A FreeDOS VM named `SRDOS` — `bin/spinrite-vm-build.sh` builds it from GRC's
-  pre-built appliance, see [docs/vm-build.md](docs/vm-build.md)
+- A FreeDOS VM named `SRDOS` — `bin/spinrite-vm-build.sh` builds it from a
+  pre-built appliance posted by a member of the GRC forums (not an official GRC
+  release), see [docs/vm-build.md](docs/vm-build.md)
 - Your own licensed SpinRite 6.1
 
 ## Quick start
@@ -86,7 +87,7 @@ cp desktop/spinrite-attach.desktop ~/Desktop/
 # 4. optional: the Claude Code skill
 mkdir -p ~/.claude/skills && cp -r skills/virtualbox-dos-vm ~/.claude/skills/
 
-# 5. build the SRDOS VM (once per stick) -- needs GRC's SRDOS.OVA and your
+# 5. build the SRDOS VM (once per stick) -- needs the forum SRDOS.OVA and your
 #    own licensed SpinRite; neither is downloaded for you
 ~/bin/spinrite-vm-build.sh --spinrite ~/Downloads/SpinRite.img
 
@@ -107,7 +108,7 @@ sequence to Claude Code — see [Let Claude Code drive it](#let-claude-code-driv
 
 ```
 bin/
-  spinrite-vm-build.sh   build the SRDOS VM from GRC's appliance + your SpinRite
+  spinrite-vm-build.sh   build the SRDOS VM from the forum appliance + your SpinRite
   spinrite-attach.sh     list physical disks; attach the chosen ones and launch;
                          prune the stale VirtualBox media registry
   spinrite-backup.sh     tar the whole setup into a timestamped archive
@@ -175,4 +176,7 @@ committing your own run history, check what is in it first.
 ## License
 
 MIT — see [LICENSE](LICENSE). Covers only the scripts, skill and documentation
-here. SpinRite and ReadSpeed remain GRC's.
+here. SpinRite and ReadSpeed remain GRC's. The `SRDOS.OVA` appliance this
+toolkit imports is neither GRC's nor this repo's — it is the work of a member of
+the GRC forums, is not distributed here, and is not an official GRC release; see
+[docs/origins.md](docs/origins.md).

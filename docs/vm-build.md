@@ -6,11 +6,16 @@
 ~/bin/spinrite-vm-build.sh --spinrite ~/Downloads/SpinRite.img
 ```
 
-It imports GRC's pre-built appliance (`docs/origins.md`), normalizes it to the
+It imports the pre-built appliance (`docs/origins.md`), normalizes it to the
 layout the rest of this toolkit expects, and puts **your** licensed SpinRite on
 its `C:` drive. It downloads nothing — the appliance is hosted on a personal
 OneDrive link from a forum thread, and SpinRite is a commercial product this repo
 never bundles or fetches. Both are files you supply.
+
+**The appliance is not an official GRC release.** It was assembled and posted by
+a member of the GRC forums. The FreeDOS and ReadSpeed *inside* it are GRC's; the
+packaging is not, it carries no published checksum, and GRC does not support it.
+See `docs/origins.md`.
 
 | Flag | |
 |---|---|
