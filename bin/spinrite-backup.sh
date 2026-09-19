@@ -78,7 +78,18 @@ Notes:
 - Raw physical-disk .vmdk pointers are NOT included on purpose -- they are
   machine/session-specific and spinrite-attach.sh recreates them fresh
   each run for whatever disk is actually present.
-- chmod +x the two scripts under bin/ after restoring.
+- chmod +x the scripts under bin/ after restoring.
+- Host group membership is NOT captured here (/etc/group lives outside this
+  archive). On a freshly built stick you must re-add the user to the groups
+  VirtualBox needs, then log out and back in (a reboot is simplest):
+    sudo usermod -aG disk "\$USER"        # raw physical-disk passthrough
+    sudo usermod -aG vboxusers "\$USER"   # USB passthrough to the guest
+  'disk' is the one that matters: without it, storageattach/startvm fail with
+  the raw medium showing State: inaccessible / Capacity: 0 MBytes -- which does
+  not look like a permissions problem. Verify with: id; test -r /dev/sda
+- Secure Boot MOK enrollment is per-machine firmware state and is likewise not
+  in this archive. If 'modprobe vboxdrv' fails with "Key was rejected by
+  service" on a machine, enroll the DKMS key there (mokutil) and reboot.
 EOF
 
 tar -czf "$ARCHIVE" -C "$STAGE" bin Desktop SRDOS claude-skills claude-memory claude-settings spinrite-tracker.csv README.txt

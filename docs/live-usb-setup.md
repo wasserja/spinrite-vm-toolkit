@@ -168,3 +168,19 @@ its README. Upload that archive somewhere off the stick.
 
 **That archive contains your licensed SpinRite. Never commit it to git** — the
 `.gitignore` here blocks `*.tar.gz` and `*.vdi` for exactly this reason.
+
+### What the archive does not capture
+
+It backs up *your* files, not the host OS's configuration. Restoring it onto a
+freshly built stick gives you the scripts, the VM and the tracker, but not:
+
+- **Group membership** (`/etc/group`) — redo the `usermod` commands from the
+  Group permissions section above, then re-login. Skipping this produces the
+  `inaccessible` / `0 MBytes` symptom that looks like anything but a permissions
+  problem.
+- **Installed packages** — `virtualbox`, `virtualbox-dkms`, `virtualbox-qt`.
+- **Secure Boot MOK enrollment** — per-machine firmware state, never on the
+  stick at all.
+
+The `README.txt` generated inside each archive repeats these as restore notes,
+so the tarball is self-describing even if this repo isn't at hand.
