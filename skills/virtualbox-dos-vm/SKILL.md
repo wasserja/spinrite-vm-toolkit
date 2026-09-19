@@ -153,7 +153,7 @@ SPINRITE auto level 3 both exit noramtest bios <port>
 | `DIAGS` | Also write a `.DBG` diagnostic file to `SRLOGS`. |
 | `QUIET` | No ticks/beeps. |
 | Drive selectors | `BIOS <n>`, `PORT <n>`, `TYPE <ahci\|ata\|ide\|bios>`, `SIZE <text>`, `MODEL <text>`, `SERIAL <text>` |
-| Range | `<selector> <start%> [<end%>]` or `#<startsector> [#<endsector>]`. Percentages need a decimal point; sectors need a leading `#`. |
+| Range | `<selector> <start%> [<end%>]` or `#<startsector> [#<endsector>]`. Percentages need a decimal point; sectors need a leading `#`. **Confirmed** for the decimal form: `bios 81 75.0 80.0` bounds the pass to that 5%, and writes only that much — verified against the host block-layer write counter. A bounded pass also gives an accurate ETA, unlike a full one. |
 
 Two behaviors that decide how the command is written:
 
@@ -170,13 +170,18 @@ Two behaviors that decide how the command is written:
   drives one at a time anyway. (`TYPE`/`MODEL`/`SERIAL`/`SIZE` match by pattern and
   can select several; using `TYPE` to select all physical drives at once is untested
   with more than one drive attached — see `docs/field-notes.md`.)
-- **Only `BIOS`, `PORT` and `TYPE bios` can select a passthrough drive.** In
+- **On AHCI, only `BIOS`, `PORT` and `TYPE bios` can select a passthrough drive.** In
   `SPINRITE list exit noramtest` output, an AHCI-attached physical disk shows its
   Model and Serial columns as `....` — SpinRite reaches it through the BIOS and
   never reads its identity strings — so `MODEL <text>` and `SERIAL <text>` have
   nothing to match on. The FreeDOS system disk is the one row with a real identity,
   and it is Type `ATA`, Port `PM`; physical drives are Type `BIOS` with Port and
   BIOS numbers both starting at `81`.
+  **Attached to `PIIX4`/IDE instead, the same drive reports Type `ATA`, Port `SM`,
+  and its identity columns populate** (`VBOX HARDDISK` / `VBf9228443-…`), so
+  `MODEL`/`SERIAL` do work there — but they match VirtualBox's synthetic identity,
+  derived from the medium UUID, never the drive's real serial. Level 3 also runs
+  ~2x faster on IDE; see `docs/field-notes.md`.
 
 `BOTH` writes the before/after benchmark straight into the run's `.LOG` file under
 "Drive's measured performance before/after running SpinRite" headers, so no

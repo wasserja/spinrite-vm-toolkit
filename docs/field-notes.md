@@ -50,11 +50,51 @@ This toolkit attaches to AHCI, so SpinRite drives the disk through that
 BIOS-attached path rather than its own driver, which caps throughput far below the
 hardware. ReadSpeed evidently uses a faster path for the same virtualized disk.
 
-Worth noting that a reply in the same thread disputes the ordering: *"In my tests
-using VirtualBox's AHCI Controller is actually much faster when you deal with actual
-errors on a SATA drive...It's almost native speed as in DOS. VirtualBox's IDE
-controller took forever to mark a bad block."* Nobody here has measured it either
-way — see `docs/roadmap.md`.
+A reply in the same thread disputes the ordering: *"In my tests using VirtualBox's
+AHCI Controller is actually much faster when you deal with actual errors on a SATA
+drive...It's almost native speed as in DOS. VirtualBox's IDE controller took forever
+to mark a bad block."*
+
+### Measured, 2026-09-19: SpinRite is ~2x faster on IDE, ReadSpeed is faster on AHCI
+
+One 512 GB SATA M.2 SSD, one machine, one afternoon, the same raw `.vmdk` pointer
+moved between `AHCI` port 0 and `PIIX4` port 1. Same bounded region on both legs
+(`75.0 80.0`, 25,605 MB) so the comparison covers identical media.
+
+| | AHCI | IDE (PIIX4) |
+|---|---|---|
+| SpinRite Type / Port | `BIOS` / 81 | `ATA` / SM |
+| SpinRite Model + Serial | `....` (unreadable) | `VBOX HARDDISK` / `VBf9228443-…` |
+| SpinRite benchmark, front / mid / end | 184.1 / 207.1 / 143.2 MB/s | **228.5 / 328.6 / 312.6 MB/s** |
+| SpinRite full-scan estimate | 45.3 min | **28.6 min** |
+| Random sector time | 0.257 ms | **0.223 ms** |
+| **Level 3 over 25,605 MB** | **372 s** (68.8 MB/s) | **179 s (143.0 MB/s)** |
+| ReadSpeed 0/25/50/75/100% | **466.4 / 460.2 / 462.0 / 460.8 / 417.8** | 308.9 / 236.5 / 306.5 / 197.1 / 126.1 |
+| Defects found | 0 | 0 |
+
+**The two tools disagree about which controller is better, and both are right.**
+SpinRite's native ATA driver engages on IDE and roughly doubles Level 3 throughput —
+2.08x on the measurement that actually costs hours. ReadSpeed is the other way round,
+reading ~1.5x faster on AHCI with a far flatter curve. They use different access
+paths, so each is measuring its own path, not the drive.
+
+Two consequences that bite:
+
+- **Never compare a ReadSpeed number across controllers.** The IDE column above
+  declines 308 → 126 across the drive. That is the access path, not the media —
+  the same drive on AHCI is flat at ~460. A before/after ReadSpeed pair is only
+  meaningful if both halves ran on the same controller.
+- **`MODEL` and `SERIAL` selectors work on IDE and not on AHCI.** A
+  BIOS-attached drive reports its identity columns as `....`, which is why
+  `BIOS`/`PORT`/`TYPE bios` are the only selectors that can address one. On IDE the
+  columns populate — though with VirtualBox's synthetic identity derived from the
+  medium UUID, not the drive's real serial, so `SERIAL <real-serial>` still will not
+  match.
+
+The upstream claim that BIOS access "may be an order of magnitude slower" overstates
+it here — the gap is 2x on writes, not 10x. And the forum reply arguing AHCI is
+faster was about drives *with real errors*, where DynaStat recovery dominates; this
+drive had none, so that case remains untested.
 
 **Compare SpinRite-before to SpinRite-after, and ReadSpeed-before to
 ReadSpeed-after. Never across tools.** The tracker stores them in separate columns

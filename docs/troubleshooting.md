@@ -68,6 +68,38 @@ VBoxManage showvminfo SRDOS --machinereadable | grep VMState=
 
 ---
 
+## 2a. Polling `showvminfo` in a loop blocks `startvm`
+
+**Symptom:** `startvm` fails with
+
+```
+VBoxManage: error: The machine 'SRDOS' is already locked by a session
+(or being locked or unlocked)
+VBoxManage: error: Details: code VBOX_E_INVALID_OBJECT_STATE (0x80bb0007)
+```
+
+while `showvminfo` reports `VMState="poweroff"` and `list runningvms` is empty.
+Nothing is running, yet the machine is locked.
+
+**Cause:** a wait-loop of the form
+
+```
+until VBoxManage showvminfo SRDOS --machinereadable | grep -q 'VMState="running"'; do ... done
+```
+
+Each `showvminfo` takes and releases a session lock. Spin one of these tightly —
+especially two at once — and `startvm` cannot get the write lock it needs. The
+loop written to *detect* the start is what prevents it.
+
+**Fix:** stop the polling loops, then start the VM. It works immediately.
+Do **not** reach for `pkill VBoxSVC` here: it is the documented fix for §1, it is
+a different problem, and it will crash any VM that is actually running.
+
+If you need to wait for a state change, poll on a slow interval (`sleep 2`+) and
+never run two waiters against the same VM.
+
+---
+
 ## 3. A stale raw-disk `.vmdk` silently under-reports capacity
 
 **Symptom:** a real 1 TB drive shows up in DOS/SpinRite as 256 GB (or some other

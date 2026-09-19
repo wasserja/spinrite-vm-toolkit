@@ -31,21 +31,32 @@ What to find out while doing it:
 - Whether SpinRite's per-drive resume state survives a drive being detached and
   re-attached in a later batch.
 
-## Measure IDE vs AHCI throughput on the same drive
+## Decide whether to move physical disks from AHCI to IDE
 
-Upstream (forum part 3b) says IDE engages SpinRite's native driver and is faster,
-while AHCI-attached drives are seen as BIOS-attached and *"may be an order of
-magnitude slower"*. A reply in the same thread says the opposite for drives with
-real errors. This repo uses AHCI, and SpinRite's own benchmark does read roughly a
-quarter of ReadSpeed's figure for the same drive — consistent with the slow path.
+**The measurement is done** (2026-09-19, `docs/field-notes.md`): SpinRite's Level 3
+runs **2.08x faster** on `PIIX4`/IDE than on `AHCI` — 179 s versus 372 s over the
+same 25,605 MB region of the same SSD — because its native ATA driver engages
+instead of the BIOS path. What is left is the decision, which one drive on one
+machine does not settle.
 
-A Level 3 pass here runs 1-4 hours per drive, so this is worth an afternoon:
+The capacity argument that justified AHCI is weaker than it looked. `PIIX4` has
+2 ports x 2 devices = 4 slots, one taken by the FreeDOS `C:` disk, leaving **3** —
+exactly what `AHCI` is configured for today. So at the current setting IDE costs
+nothing in drive count and halves the runtime. AHCI only wins if its portcount can
+actually go past 3, which is itself unverified (see the PortCount item below).
 
-1. Attach one drive to `PIIX4` (IDE) port 1 instead of AHCI.
-2. Run SpinRite's benchmark, and a Level 3 pass over a bounded sector range.
-3. Repeat on AHCI with the same drive and the same range.
-4. If IDE wins meaningfully, the trade-off becomes 3 drives per run on the fast
-   path versus more drives on the slow one — which would change the default.
+Before changing `CONTROLLER` in `bin/spinrite-attach.sh`:
+
+- Repeat on at least one spinning disk and one NVMe. This was a SATA SSD, and the
+  DynaStat behaviour the forum reply describes only appears on drives with real
+  errors — where the reply claims AHCI wins. Untested here; this drive was clean.
+- Confirm 3 drives attach and enumerate correctly across `PIIX4` port 0 device 1,
+  port 1 device 0 and port 1 device 1. Only single-drive IDE has been exercised.
+- Decide what happens to ReadSpeed. It reads *faster* on AHCI (flat ~460 MB/s versus
+  a 308 -> 126 decline on IDE), so moving to IDE makes the ReadSpeed baseline both
+  slower and less flat. Since before/after pairs are only comparable within one
+  controller, switching mid-fleet would break comparisons against every row already
+  in the tracker.
 
 ## Test the `type bios` multi-drive selector
 
@@ -68,6 +79,53 @@ What remains is the part that would actually save time: whether `type bios` sele
 matched set with `SPINRITE list exit noramtest type bios` before ever combining
 `type` with `auto level 3`. See `docs/field-notes.md`.
 
+## Decide from ReadSpeed whether a pass is needed, and how much of one
+
+Right now the decision to run Level 3 is a judgement call made by eye from
+ReadSpeed's five numbers. It could be a rule, and the rule could also choose a
+*bounded* region instead of the whole drive — which matters because Level 3 is a
+read **and rewrite** pass, and SpinRite's own drive-select screen warns it is not
+recommended for SSDs. Every percent not rewritten is write endurance not spent.
+
+The shape of it:
+
+1. Take the five ReadSpeed points (0/25/50/75/100%), which
+   `spinrite-track.py` already stores as `readspeed_before`.
+2. Compare each against the others — deviation from the median is probably the
+   right statistic, not the mean, so one bad point cannot drag the baseline.
+3. Below some threshold, report "no pass needed" and stop.
+4. Above it, map the offending sample point(s) to a percentage range and emit the
+   ready-to-run command, now that the `Range` token is confirmed to work
+   (`bios <n> 75.0 80.0`, see below).
+
+The open questions are what make this worth doing carefully rather than quickly:
+
+- **What threshold?** Unknown, and a single reading is not enough to set one. The
+  512 GB SATA M.2 in the reference machine measured its 100% point **17% below**
+  the other four on 2026-09-19, and **~10% below** on the same drive, same
+  machine, a few hours later with no pass in between (384.3 then 417.8 MB/s,
+  against ~460-466 across the rest). So run-to-run variance is real and a rule
+  that fires on one sample will fire inconsistently. The rule may need to require
+  a repeat measurement before recommending hours of rewriting.
+- **A sample point is a spot, not a region.** ReadSpeed measures at five
+  locations; a dip at the 75% sample does not establish where the slow region
+  starts or ends. Scanning the midpoints to each neighbour (62.5-87.5% for a bad
+  75%) is the obvious first guess and is exactly that — a guess.
+- **Spinning disks need a different rule entirely.** A declining outer-to-inner
+  curve is normal physics on an HDD, so "should be flat" only holds for SSD and
+  NVMe (`docs/field-notes.md`). An HDD rule has to compare against an expected
+  decline, not against flatness.
+- **Do not recommend a re-run on a drive that already passed clean.**
+  `docs/field-notes.md` records unevenness surviving a clean Level 3 pass, which
+  makes it a property of the drive's controller or flash layout rather than a
+  defect. The tracker already knows which drives have passed; the rule has to
+  consult it instead of re-recommending the same drive forever.
+
+Natural home: a new verb on `bin/spinrite-track.py`, which already owns the
+benchmark columns and the per-drive history — something like
+`spinrite-track.py advise --disk <serial>`, printing either "no pass needed" or
+the bounded command to run.
+
 ## Target a Level 3 pass at a bounded region of a drive
 
 `skills/virtualbox-dos-vm/SKILL.md` documents a `Range` token —
@@ -78,8 +136,16 @@ requiring a decimal point — so
 SPINRITE auto level 3 both exit noramtest bios 81 75.0 100.0
 ```
 
-should refresh only the last quarter of a drive. **That syntax has never been run
-here.** It is transcribed from the command-line wiki, not confirmed.
+should refresh only the last quarter of a drive.
+
+**The syntax is confirmed** (2026-09-19). `spinrite auto level 3 exit noramtest
+bios 81 75.0 80.0` ran twice, and the Graphic Status Display opened at `75.0554%`
+with 25,605 MB of work queued — 5% of a 512 GB drive. The host's
+`/sys/block/sda/stat` write counter moved by exactly 25.6 GB per run, so the bound
+is real at the block layer and not just on screen. SpinRite's Main Menu confirms it
+in words too: *"Selected items may be resumed after interruption by specifying a
+starting and ending percentage, other than 0% and 100%."* The ETA was accurate to
+within ~10 s on a bounded pass, unlike the wild first estimates a full pass gives.
 
 It is worth confirming because a whole-drive Level 3 costs 1-4 hours while the
 interesting region is often a fraction of the drive. `docs/field-notes.md` records
@@ -91,8 +157,10 @@ or inherent to the drive (see the caveat in `docs/field-notes.md`).
 
 What to find out:
 
-- Whether `75.0 100.0` is accepted and actually bounds the pass, and what a
-  percentage written without a decimal point does instead.
+- What a percentage written **without** a decimal point does. Only the decimal
+  form has been exercised.
+- Whether `100.0` as an end bound behaves like any other value — the Main Menu help
+  says resumption works "other than 0% and 100%", which hints those two are special.
 - Whether the `both` benchmark still means anything on a bounded pass, or whether it
   benchmarks the whole drive regardless — which would break the before/after pairing
   the tracker stores.
