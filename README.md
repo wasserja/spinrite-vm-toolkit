@@ -48,9 +48,10 @@ licensed copy and place it on the FreeDOS VM's `C:` drive — see
 - A persistent Kubuntu (or similar) live USB — see
   [docs/live-usb-setup.md](docs/live-usb-setup.md)
 - VirtualBox 7.x with working DKMS kernel modules
-- Membership in the `disk` group (with the caveat in
-  [docs/troubleshooting.md](docs/troubleshooting.md) — it does not take effect
-  the way you expect)
+- Membership in the `disk` group (for raw disk access) and `vboxusers` (for USB
+  passthrough) — see [docs/live-usb-setup.md](docs/live-usb-setup.md), and note
+  the `disk` change does not take effect the way you expect
+  ([docs/troubleshooting.md](docs/troubleshooting.md))
 - A FreeDOS VM named `SRDOS` — see [docs/vm-build.md](docs/vm-build.md)
 - Your own licensed SpinRite 6.1
 

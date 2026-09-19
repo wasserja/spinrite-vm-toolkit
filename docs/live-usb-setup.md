@@ -34,17 +34,90 @@ sudo apt update
 sudo apt install virtualbox virtualbox-dkms virtualbox-qt
 ```
 
-Raw physical-disk passthrough needs read/write access to the block devices, which
-means the `disk` group:
+Reference version: `7.0.16_Ubuntu`.
+
+## Group permissions
+
+This is the part that is easy to get wrong, because the group you actually need
+is not the one with "vbox" in the name. Two groups, two different jobs:
 
 ```
-sudo usermod -aG disk "$USER"
+sudo usermod -aG disk "$USER"          # required: raw physical-disk passthrough
+sudo usermod -aG vboxusers "$USER"     # USB passthrough to the guest
 ```
 
-**This does not take effect the way you expect.** See Gotcha 1 in
-`docs/troubleshooting.md` before you conclude the permissions are broken —
-`sg disk -c ...` does *not* fix VirtualBox, and the symptom (a medium showing as
-`inaccessible` with `Capacity: 0 MBytes`) looks nothing like a group problem.
+**`disk` is the one that matters here.** Block devices are `root:disk` mode
+`0660`:
+
+```
+$ ls -la /dev/sda
+brw-rw---- 1 root disk 8, 0 /dev/sda
+```
+
+Without membership in `disk`, VirtualBox cannot open the raw device behind a
+`.vmdk` pointer, and `bin/spinrite-attach.sh` fails at `storageattach`/`startvm`.
+
+**`vboxusers` is not about disks.** VirtualBox's udev rules use it for USB
+device nodes — `/lib/udev/rules.d/60-virtualbox.rules` runs
+`VBoxCreateUSBNode.sh ... vboxusers` on USB add. You want it if you ever pass a
+USB device through to the guest; it does nothing for raw disk access. Add it
+anyway, it's standard and harmless.
+
+### Do not "fix" /dev/vboxdrv
+
+It looks broken. It isn't:
+
+```
+$ ls -la /dev/vboxdrv
+crw------- 1 root root 10, 119 /dev/vboxdrv
+```
+
+Mode `0600`, owned by `root:root`, and no group can reach it. That is deliberate
+— `/lib/udev/rules.d/60-virtualbox-dkms.rules` sets it explicitly, and it is
+restored on every boot, so chmod/chown changes do not survive anyway.
+
+Ubuntu ships VirtualBox's **hardened** build, where the binaries that need the
+driver are setuid root:
+
+```
+$ ls -la /usr/lib/virtualbox/VirtualBoxVM
+-rwsr-sr-x 1 root root ... /usr/lib/virtualbox/VirtualBoxVM
+```
+
+Those setuid stubs open `/dev/vboxdrv`, not your user. Loosening its permissions
+gains you nothing and weakens a deliberate boundary. If VMs will not start, the
+cause is a missing/unsigned kernel module (see Secure Boot below) or the VBoxSVC
+credential gotcha (next), never this device node.
+
+### The group change does not reach VirtualBox the way you expect
+
+**Read Gotcha 1 in `docs/troubleshooting.md` before concluding permissions are
+broken.** `sg disk -c '...'` does *not* fix VBoxManage, and the symptom — a
+medium showing `State: inaccessible` with `Capacity: 0 MBytes` — looks nothing
+like a group problem. `bin/spinrite-attach.sh` works around it by routing every
+VBoxManage call through `sudo -iu "$(id -un)"`.
+
+### Verify
+
+```
+id                       # expect ... 6(disk) ... 125(vboxusers) ...
+getent group disk        # expect your username listed
+test -r /dev/sda && echo "raw read OK"
+lsmod | grep vbox        # expect vboxdrv, vboxnetflt, vboxnetadp
+VBoxManage list hostinfo # expect real output, not an error
+```
+
+A fresh login is required after `usermod` — on a live USB, a reboot is simplest.
+
+### This is per-stick, not per-machine
+
+Group membership lives in `/etc/group` on the persistence overlay, so it is
+configured once per USB stick and survives reboots on any machine. Contrast with
+Secure Boot MOK enrollment below, which lives in each machine's firmware and must
+be redone on every new machine you boot on.
+
+Note that `bin/spinrite-backup.sh` does **not** capture `/etc/group` — if you
+rebuild a stick from a backup archive, redo the `usermod` commands above by hand.
 
 ## Secure Boot
 
