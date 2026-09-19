@@ -101,13 +101,13 @@ What to find out:
   full one. If it does not, the range has to go in the tracker's `notes` column, or a
   later reader will take a "Clean, 0 defects" row for a full pass.
 
-## Script the VM build
+## Raise `AHCI` PortCount past 3 and find the guest BIOS ceiling
 
-`docs/vm-build.md` documents the build by hand. Since GRC publishes a pre-built
-`SRDOS.OVA` appliance (`docs/origins.md`), what is left worth scripting is: fetch
-and verify the OVA, `VBoxManage import` it, and place the user's own licensed
-`SPINRITE.EXE` on `C:`. FreeDOS installation and ReadSpeed image-building are not
-needed.
-
-The repo's standing rule applies: no GRC software is ever committed or fetched by
-these scripts. The licensed SpinRite is supplied by the user at build time.
+`bin/spinrite-vm-build.sh` leaves the appliance's `AHCI` portcount at 3, because
+that is what has been tested. Raising it is one command
+(`VBoxManage storagectl <vm> --name AHCI --portcount <n>`, up to 30), but SpinRite
+reaches these disks as BIOS-attached drives, so the guest BIOS drive table may cap
+them lower than `PortCount` does. Until that is tested on a machine with enough
+drives, the batching procedure in `docs/workflow.md` §3a stays the documented
+answer. Same unknown as the first item on this page, approached from the other
+side.

@@ -25,8 +25,10 @@ series — read these first, they are the foundation:
 
 Part 5a offers a ready-made VirtualBox appliance, `SRDOS.OVA` (~1 MB),
 containing GRC-customized FreeDOS with ReadSpeed (`rs.exe`) already installed.
-`File | Import Appliance` in VirtualBox and you are done. The VM this repo
-assumes — name `SRDOS`, disk `SRDOS-disk001.vdi` — is that appliance.
+The VM this repo assumes — name `SRDOS`, disk `SRDOS-disk001.vdi` — is that
+appliance. `bin/spinrite-vm-build.sh` imports it, checks it against its own
+manifest, and installs your licensed SpinRite onto its `C:`; `File | Import
+Appliance` in the GUI does the import half by hand.
 
 `docs/vm-build.md` documents building the VM from scratch anyway, because it is
 worth understanding what the appliance actually is, and because the pieces

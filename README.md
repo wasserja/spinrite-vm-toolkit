@@ -63,7 +63,8 @@ licensed copy and place it on the FreeDOS VM's `C:` drive — see
   passthrough) — see [docs/live-usb-setup.md](docs/live-usb-setup.md), and note
   the `disk` change does not take effect the way you expect
   ([docs/troubleshooting.md](docs/troubleshooting.md))
-- A FreeDOS VM named `SRDOS` — see [docs/vm-build.md](docs/vm-build.md)
+- A FreeDOS VM named `SRDOS` — `bin/spinrite-vm-build.sh` builds it from GRC's
+  pre-built appliance, see [docs/vm-build.md](docs/vm-build.md)
 - Your own licensed SpinRite 6.1
 
 ## Quick start
@@ -75,7 +76,8 @@ cd spinrite-vm-toolkit
 
 # 2. install the scripts
 mkdir -p ~/bin
-cp bin/spinrite-attach.sh bin/spinrite-backup.sh bin/spinrite-track.py ~/bin/
+cp bin/spinrite-vm-build.sh bin/spinrite-attach.sh bin/spinrite-backup.sh \
+   bin/spinrite-track.py ~/bin/
 chmod +x ~/bin/spinrite-*
 
 # 3. optional: desktop launcher (edit YOUR_USER in the Exec= line first)
@@ -84,12 +86,16 @@ cp desktop/spinrite-attach.desktop ~/Desktop/
 # 4. optional: the Claude Code skill
 mkdir -p ~/.claude/skills && cp -r skills/virtualbox-dos-vm ~/.claude/skills/
 
-# 5. check what this stick has already done, look, then run
+# 5. build the SRDOS VM (once per stick) -- needs GRC's SRDOS.OVA and your
+#    own licensed SpinRite; neither is downloaded for you
+~/bin/spinrite-vm-build.sh --spinrite ~/Downloads/SpinRite.img
+
+# 6. check what this stick has already done, look, then run
 ~/bin/spinrite-track.py report
 ~/bin/spinrite-attach.sh list
 ~/bin/spinrite-attach.sh attach --all
 
-# 6. occasional housekeeping: clear stale VirtualBox media registry entries
+# 7. occasional housekeeping: clear stale VirtualBox media registry entries
 ~/bin/spinrite-attach.sh prune
 ```
 
@@ -101,6 +107,7 @@ sequence to Claude Code — see [Let Claude Code drive it](#let-claude-code-driv
 
 ```
 bin/
+  spinrite-vm-build.sh   build the SRDOS VM from GRC's appliance + your SpinRite
   spinrite-attach.sh     list physical disks; attach the chosen ones and launch;
                          prune the stale VirtualBox media registry
   spinrite-backup.sh     tar the whole setup into a timestamped archive

@@ -1,15 +1,62 @@
 # Building the SRDOS FreeDOS VM
 
-> **Faster path first:** GRC forums part 5a offers a pre-built appliance,
-> `SRDOS.OVA` (~1 MB), with FreeDOS and ReadSpeed already installed — import it
-> with `File | Import Appliance` and skip to "Getting SpinRite onto C:" below.
-> See `docs/origins.md` for the link and its caveats. Build from scratch if you
-> want to understand the machine, or if the appliance won't import.
+`bin/spinrite-vm-build.sh` does this in one command:
 
-`bin/spinrite-attach.sh` expects a VirtualBox VM named `SRDOS` with a specific
-controller layout. `vm/SRDOS.vbox.example` is a sanitized copy of a working
-definition — it documents the shape, but it is not a drop-in file (the licensed
-SpinRite lives on a disk image that is deliberately not in this repo).
+```
+~/bin/spinrite-vm-build.sh --spinrite ~/Downloads/SpinRite.img
+```
+
+It imports GRC's pre-built appliance (`docs/origins.md`), normalizes it to the
+layout the rest of this toolkit expects, and puts **your** licensed SpinRite on
+its `C:` drive. It downloads nothing — the appliance is hosted on a personal
+OneDrive link from a forum thread, and SpinRite is a commercial product this repo
+never bundles or fetches. Both are files you supply.
+
+| Flag | |
+|---|---|
+| `--spinrite <path>` | Required. Your licensed `SPINRITE.EXE`, or the bootable `.img` the GRC installer writes (mounted read-only and the binary lifted out). |
+| `--ova <path>` | The appliance. Default `~/Downloads/SRDOS.ova`. |
+| `--name <name>` | VM to create. Default `SRDOS`. Refuses if that name already exists. |
+| `--basefolder <dir>` | Where to put it. Default is VirtualBox's own. |
+| `--yes` | Skip the confirmation. |
+
+What it actually does, and why each step is there:
+
+1. **Verifies the OVA against its own manifest.** GRC publishes no checksum for
+   the archive, but the OVA carries `SRDOS.mf` with a SHA1 per member — enough to
+   catch a truncated or corrupted download, which is the realistic failure. The
+   whole-file sha256 is also compared against the copy this toolkit was tested
+   with; a mismatch only warns, because forum replies mention re-writing the
+   manifest for newer VirtualBox releases.
+2. **Imports it,** dropping the appliance's sound card and its spare second IDE
+   controller. Those units are found by parsing `import --dry-run`, not
+   hardcoded.
+3. **Asserts the layout.** VirtualBox already names the imported controllers
+   `Floppy` / `PIIX4` / `AHCI` and the appliance is already DOS / 128 MB / 9 MB
+   VRAM with `AHCI` portcount 3 — the OVF's `ideController0` / `sataController0`
+   are element captions, not controller names. So there is nothing to rename.
+   The script checks the three controllers exist rather than trusting that.
+4. **Installs SpinRite, entirely from the host.** `clonemedium` to RAW, loop-mount
+   the FAT16 partition, replace the appliance's SpinRite, convert back to VDI.
+   No guest boot and no synthetic keystrokes, so it is deterministic.
+5. **Copies `RS.EXE` to the root of `C:`.** The appliance ships ReadSpeed in
+   `READSPEE\` only, and `AUTOEXEC.BAT` sets `PATH=\` — so `rs` at the `C:\>`
+   prompt would not run. `docs/workflow.md` step 4 assumes it does.
+6. **Verifies** by cloning the finished disk back and mounting it read-only:
+   both `SPINRITE.EXE` and `RS.EXE` must be in the root, or it fails loudly.
+
+### Why the appliance's own SpinRite is replaced
+
+It ships a pre-release build that only displays a "buy your own copy" banner —
+259,480 bytes dated 2023-08-13, against 270,768 bytes for licensed 6.1. Nothing
+about the appliance is licensed software you can use; the FreeDOS and ReadSpeed
+on it are what make it worth importing.
+
+### Doing it by hand
+
+Everything below documents the same build manually. Worth reading once: the
+pieces (controller layout, raw-image attachment, host-side FAT mounting) are the
+same ones you need for maintenance either way.
 
 ## The layout the scripts assume
 

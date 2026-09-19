@@ -44,6 +44,7 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 
 mkdir -p "$STAGE/bin" "$STAGE/Desktop" "$STAGE/SRDOS" "$STAGE/claude-settings"
+[ -f "$HOME/bin/spinrite-vm-build.sh" ] && cp "$HOME/bin/spinrite-vm-build.sh" "$STAGE/bin/"
 cp "$HOME/bin/spinrite-attach.sh" "$STAGE/bin/"
 cp "$HOME/bin/spinrite-backup.sh" "$STAGE/bin/"
 cp "$HOME/bin/spinrite-track.py" "$STAGE/bin/"
@@ -61,6 +62,7 @@ cat > "$STAGE/README.txt" <<EOF
 SpinRite live-USB backup -- $TS
 
 Restore mapping (copy each into place on the new/rebuilt USB):
+  bin/spinrite-vm-build.sh        -> ~/bin/spinrite-vm-build.sh  (if present)
   bin/spinrite-attach.sh          -> ~/bin/spinrite-attach.sh
   bin/spinrite-backup.sh          -> ~/bin/spinrite-backup.sh
   bin/spinrite-track.py           -> ~/bin/spinrite-track.py

@@ -121,6 +121,16 @@ the controller/BIOS ceiling: `docs/vm-build.md`.
 - **`SPINRITE.EXE` and `RS.EXE` do not auto-run.** They are launched from the prompt,
   normally by the user. Do not screenshot-poll expecting an auto-run.
 - Attach/launch script: `~/bin/spinrite-attach.sh` (see above).
+- **Building it from scratch:** `~/bin/spinrite-vm-build.sh --spinrite <path>`
+  imports GRC's pre-built `SRDOS.OVA`, checks it against its own manifest, and
+  installs the user's licensed SpinRite onto `C:` host-side (clonemedium to RAW,
+  loop-mount the FAT16 partition, convert back to VDI -- no guest boot needed). It
+  refuses to touch an existing VM of the same name, and downloads nothing: both the
+  appliance and SpinRite are files the user supplies. Two things it handles that are
+  easy to miss by hand -- the appliance's bundled SpinRite is an unusable
+  pre-release and must be replaced, and `RS.EXE` ships only in `READSPEE\` while
+  `AUTOEXEC.BAT` sets `PATH=\`, so `rs` does not work until it is copied to the
+  root of `C:`. See `docs/vm-build.md`.
 
 ## SpinRite via the command line
 
