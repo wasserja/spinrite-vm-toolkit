@@ -10,6 +10,11 @@ set -euo pipefail
 VM_NAME="SRDOS"
 VM_DIR="$HOME/VirtualBox VMs"
 CONTROLLER="AHCI"
+
+# Shortest token accepted as a serial substring. Device names are matched
+# exactly, so this only bounds the fuzzy path -- a two-character typo must not
+# be able to select a drive. Referenced by usage(), so it has to live up here.
+MIN_SERIAL_LEN=4
 SELF="$(basename "$0")"
 
 log() { printf '%s\n' "$*"; }
@@ -22,11 +27,17 @@ Usage:
   $SELF list                     # discover + print table, attach nothing
   $SELF attach --all             # attach every discovered disk
   $SELF attach sdb sdc           # attach ONLY these
+  $SELF attach S0EXAMPLE000001   # ...or by serial substring
   $SELF attach --all --except sde
   $SELF attach --all --yes       # skip the typed confirmation
+  $SELF prune                    # unregister stale VirtualBox media entries
+  $SELF prune --yes
   $SELF --help
 
-Disk names are as printed by 'list' ("sdb", "/dev/sdb" and "nvme0n1" all work).
+Disks are named as 'list' prints them ("sdb", "/dev/sdb" and "nvme0n1" all
+work), or by a substring of their SERIAL ($MIN_SERIAL_LEN+ characters,
+case-insensitive, must match exactly one drive). Serials are what the tracker
+records and they survive a reboot, so a batch list carries between sessions.
 Every attached disk has its partitions unmounted and is handed raw to a DOS
 utility that rewrites every sector at Level 3. The live boot USB is always
 excluded from discovery.
@@ -52,6 +63,7 @@ normalize() { printf '%s\n' "${1#/dev/}" | sed 's:/*$::'; }
 case "${1-}" in
   ""|list)   MODE="list"; [ $# -gt 0 ] && shift ;;
   attach)    MODE="attach"; shift ;;
+  prune)     MODE="prune"; shift ;;
   -h|--help) usage; exit 0 ;;
   -*)        usage_die "unknown option: $1" ;;
   *)
@@ -93,6 +105,9 @@ done
 if [ "$MODE" = "list" ]; then
   [ "$WANT_ALL" = 0 ] && [ "${#NAMES[@]}" = 0 ] && [ "${#EXCEPTS[@]}" = 0 ] \
     || usage_die "'list' takes no disk names or flags -- it only ever prints."
+elif [ "$MODE" = "prune" ]; then
+  [ "$WANT_ALL" = 0 ] && [ "${#NAMES[@]}" = 0 ] && [ "${#EXCEPTS[@]}" = 0 ] \
+    || usage_die "'prune' takes no disk names -- it only ever touches the media registry. (--yes is accepted.)"
 else
   [ "${#EXCEPTS[@]}" = 0 ] || [ "$WANT_ALL" = 1 ] \
     || usage_die "--except is only valid with --all (did you mean: attach --all --except ${EXCEPTS[*]}?)."
@@ -114,6 +129,109 @@ VBM() {
   sudo -iu "$(id -un)" -- VBoxManage "$@"
 }
 
+# ----------------------------------------------------------------- prune mode
+
+# VirtualBox keeps a registry of every medium it has ever been handed. Raw-disk
+# pointers for drives that are no longer plugged in, and clones left behind by
+# `clonemedium`, stay in it forever as "inaccessible" entries. They are inert,
+# but they accumulate -- and they make `VBoxManage list hdds` useless for
+# spotting a real problem. Unregistering one never deletes its file: if the
+# drive comes back, `attach` re-registers the same pointer.
+if [ "$MODE" = "prune" ]; then
+  if pgrep -f "VirtualBoxVM.*--startvm" >/dev/null 2>&1; then
+    die "A VirtualBoxVM process is already running -- refusing to touch the media registry. Power the VM off first."
+  fi
+
+  # Media currently attached to any registered VM, by UUID. `list hdds` does
+  # not reliably print an "In use by VMs" line (it does not on VirtualBox 7.x
+  # for an attached VDI), so the authoritative source is each VM's own
+  # attachment list.
+  attached_uuids=$(
+    VBM list vms 2>/dev/null | sed -n 's/.*{\(.*\)}.*/\1/p' | while read -r vmid; do
+      VBM showvminfo "$vmid" --machinereadable 2>/dev/null \
+        | sed -n 's/^"[^"]*ImageUUID[^"]*"="\([^"]*\)"$/\1/p'
+    done | sort -u
+  )
+
+  # One record per medium: UUID, state, location.
+  records=$(
+    VBM list hdds 2>/dev/null | awk '
+      function flush() { if (uuid != "") printf "%s\t%s\t%s\n", uuid, state, loc; uuid=""; state=""; loc="" }
+      /^UUID:/     { flush(); uuid=$2; next }
+      /^State:/    { state=$2; next }
+      /^Location:/ { loc=$0; sub(/^Location:[ \t]*/, "", loc); next }
+      END          { flush() }
+    '
+  )
+  [ -n "$records" ] || { log "Media registry is empty -- nothing to prune."; exit 0; }
+
+  gone=()      # registry entry whose backing file no longer exists
+  absent=()    # pointer file still there, but its drive is not plugged in
+  skipped=0
+  while IFS=$'\t' read -r uuid state loc; do
+    [ -n "$uuid" ] || continue
+    [ "$state" = "inaccessible" ] || continue
+    if [ -n "$attached_uuids" ] && printf '%s\n' "$attached_uuids" | grep -qxF "$uuid"; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if [ -e "$loc" ]; then
+      absent+=("$uuid|$loc")
+    else
+      gone+=("$uuid|$loc")
+    fi
+  done <<< "$records"
+
+  total=$(( ${#gone[@]} + ${#absent[@]} ))
+  if [ "$total" = 0 ]; then
+    log "No stale media registry entries."
+    [ "$skipped" -gt 0 ] && log "($skipped inaccessible entr(y/ies) skipped -- still attached to a VM.)"
+    exit 0
+  fi
+
+  if [ "${#gone[@]}" -gt 0 ]; then
+    log "Dangling entries -- the file they point at is gone (${#gone[@]}):"
+    for rec in "${gone[@]}"; do log "  ${rec#*|}"; done
+    log ""
+  fi
+  if [ "${#absent[@]}" -gt 0 ]; then
+    log "Raw pointers whose drive is not plugged in right now (${#absent[@]}):"
+    for rec in "${absent[@]}"; do log "  ${rec#*|}"; done
+    log ""
+    log "  These pointer FILES are kept. Unregistering only clears the registry entry;"
+    log "  '$SELF attach' re-registers the pointer when that drive turns up again."
+    log ""
+  fi
+  [ "$skipped" -gt 0 ] && log "$skipped inaccessible entr(y/ies) skipped -- still attached to a VM." && log ""
+
+  log "About to unregister $total medium/media (closemedium, never --delete; no file is removed)."
+  if [ "$ASSUME_YES" = 1 ]; then
+    log "--yes given; skipping confirmation."
+  else
+    read -rp "Type 'yes' to continue: " confirm
+    [ "$confirm" = "yes" ] || die "Aborted by user."
+  fi
+
+  closed=0
+  failed=0
+  for rec in ${gone[@]+"${gone[@]}"} ${absent[@]+"${absent[@]}"}; do
+    uuid="${rec%%|*}"
+    if VBM closemedium disk "$uuid" >/dev/null 2>&1; then
+      closed=$((closed + 1))
+    else
+      log "WARNING: could not unregister $uuid (${rec#*|})"
+      failed=$((failed + 1))
+    fi
+  done
+  log ""
+  if [ "$failed" -gt 0 ]; then
+    log "Unregistered $closed medium/media, $failed failed."
+  else
+    log "Unregistered $closed medium/media."
+  fi
+  exit 0
+fi
+
 # ---------------------------------------------------------------- discovery
 
 # Identify the boot USB so it is always excluded, regardless of its /dev letter
@@ -124,6 +242,58 @@ boot_disk=$(lsblk -no pkname "$boot_src" 2>/dev/null || true)
 
 mapfile -t candidates < <(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}' | grep -vx "$boot_disk" || true)
 [ "${#candidates[@]}" -gt 0 ] || die "No physical disks found besides the boot USB (/dev/$boot_disk)."
+
+# Non-fatal counterpart to resolve_byid(): the by-id basename, or nothing.
+byid_basename() {
+  local dev="$1" real link best=""
+  [ -d /dev/disk/by-id ] || return 0
+  real=$(readlink -f "/dev/$dev") || return 0
+  for link in /dev/disk/by-id/*; do
+    [ -e "$link" ] || continue
+    [[ "$link" == *-part* ]] && continue
+    [ "$(readlink -f "$link")" = "$real" ] || continue
+    case "$(basename "$link")" in
+      nvme-*|ata-*|usb-*|scsi-*) best="$link"; break ;;
+      *) [ -z "$best" ] && best="$link" ;;
+    esac
+  done
+  [ -n "$best" ] && basename "$best"
+}
+
+# Everything a serial substring may match against: the drive's own SERIAL and
+# its by-id basename, which encodes model+serial.
+disk_identity() {
+  printf '%s %s' "$(lsblk -dn -o SERIAL "/dev/$1" 2>/dev/null | tr -d ' ')" "$(byid_basename "$1")"
+}
+
+# Map one user-supplied token to exactly one discovered disk, into $RESOLVED.
+#
+# Device names (sdb, nvme0n1) are stable within a boot but not across boots or
+# machines, while the tracker records serials -- so a batch list written down in
+# one session cannot be replayed in the next. Accepting a serial substring here
+# is what lets it be carried verbatim. An exact device name still wins outright,
+# so nothing about the old interface changes.
+RESOLVED=""
+resolve_selector() {
+  local token="$1" role="$2" dev matches=()
+  if printf '%s\n' "${candidates[@]}" | grep -qxF -- "$token"; then
+    RESOLVED="$token"
+    return 0
+  fi
+  if [ "${#token}" -lt "$MIN_SERIAL_LEN" ]; then
+    die "$role '$token': no disk of that name, and too short to use as a serial (need $MIN_SERIAL_LEN+ characters). Run '$SELF list'."
+  fi
+  for dev in "${candidates[@]}"; do
+    if disk_identity "$dev" | grep -qiF -- "$token"; then
+      matches+=("$dev")
+    fi
+  done
+  case "${#matches[@]}" in
+    1) RESOLVED="${matches[0]}" ;;
+    0) die "$role '$token': not a disk name here, and no discovered drive's serial contains it (or it is the live boot USB). Run '$SELF list' to see names and serials." ;;
+    *) die "$role '$token': ambiguous -- matches ${matches[*]/#//dev/}. Use a longer serial substring, or the device name." ;;
+  esac
+}
 
 print_table() {
   local dev size model serial mounted mark
@@ -181,6 +351,10 @@ if [ "$MODE" = "list" ]; then
   log ""
   log "  To attach all:      $SELF attach --all"
   log "  To attach a subset: $SELF attach ${candidates[0]}${candidates[1]+ ${candidates[1]}}"
+  log "  ...or by serial:    $SELF attach $(disk_identity "${candidates[0]}" | awk '{print $1}')"
+  log ""
+  log "Serials come straight from the tracker (~/bin/spinrite-track.py report), so a"
+  log "batch list noted in one session can be replayed verbatim in the next."
   exit 0
 fi
 
@@ -193,16 +367,18 @@ if pgrep -f "VirtualBoxVM.*--startvm" >/dev/null 2>&1; then
   die "A VirtualBoxVM process is already running -- refusing to touch VBoxSVC or restart. Check 'ps aux | grep VirtualBoxVM' / the physical screen before rerunning this script."
 fi
 
-# Work out the selection before anything destructive happens.
-in_candidates() { printf '%s\n' "${candidates[@]}" | grep -qxF "$1"; }
-
+# Work out the selection before anything destructive happens. Tokens are
+# resolved to device names first, so duplicate detection below compares the
+# actual disks -- "attach sda <sda's serial>" is caught as naming one twice.
 selected=()
 if [ "$WANT_ALL" = 1 ]; then
+  excluded=()
   for name in "${EXCEPTS[@]}"; do
-    in_candidates "$name" || die "--except /dev/$name: not among the discovered disks. Run '$SELF list' to see them."
+    resolve_selector "$name" "--except"
+    excluded+=("$RESOLVED")
   done
   for dev in "${candidates[@]}"; do
-    if [ "${#EXCEPTS[@]}" -gt 0 ] && printf '%s\n' "${EXCEPTS[@]}" | grep -qxF "$dev"; then
+    if [ "${#excluded[@]}" -gt 0 ] && printf '%s\n' "${excluded[@]}" | grep -qxF -- "$dev"; then
       continue
     fi
     selected+=("$dev")
@@ -210,11 +386,10 @@ if [ "$WANT_ALL" = 1 ]; then
   [ "${#selected[@]}" -gt 0 ] || die "--except excluded every discovered disk; nothing left to attach."
 else
   for name in "${NAMES[@]}"; do
-    in_candidates "$name" \
-      || die "/dev/$name: not among the discovered disks (or it is the live boot USB). Run '$SELF list' to see them."
-    printf '%s\n' "${selected[@]+"${selected[@]}"}" | grep -qxF "$name" \
-      && die "/dev/$name named twice."
-    selected+=("$name")
+    resolve_selector "$name" "disk"
+    printf '%s\n' "${selected[@]+"${selected[@]}"}" | grep -qxF -- "$RESOLVED" \
+      && die "/dev/$RESOLVED selected twice (via '$name')."
+    selected+=("$RESOLVED")
   done
 fi
 

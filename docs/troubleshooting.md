@@ -180,6 +180,46 @@ rather than fighting the same bridge repeatedly.
 
 ---
 
+## 6. `VBoxManage list hdds` fills up with inaccessible entries
+
+VirtualBox keeps a registry of every medium it has ever been handed, and nothing
+removes entries from it automatically. On a stick carried between machines this
+grows fast, from two directions:
+
+- **Raw-disk pointers for drives that are no longer plugged in.** Every `attach`
+  registers a `.vmdk` pointer. Boot on different hardware and that drive is gone,
+  so its entry goes `State: inaccessible` — while staying in the registry forever.
+- **Clones left behind by `clonemedium`.** Reading the guest's `C:` disk from the
+  host registers the raw clone (see `docs/vm-build.md`). Delete the file without
+  `closemedium` first and the entry dangles, pointing at a path that no longer
+  exists.
+
+They are inert — nothing breaks — but they make `list hdds` useless for spotting a
+real problem. Observed on one stick: 19 inaccessible entries against 2 live ones.
+
+```
+~/bin/spinrite-attach.sh prune          # report, then ask
+~/bin/spinrite-attach.sh prune --yes    # no prompt
+```
+
+It separates the two cases in its report, skips any medium still attached to a VM,
+and uses `closemedium` **without** `--delete`, so no file is ever removed. That
+matters most for the raw pointers: unregistering one only clears the registry
+entry, and `attach` re-registers the same pointer when that drive turns up again.
+
+Doing it by hand is the same call, one UUID at a time:
+`VBoxManage closemedium disk <uuid>`, with UUIDs from `VBoxManage list hdds`.
+
+> **Never add `--delete` to a raw-disk medium.** Its "file" is a pointer at real
+> hardware — see `docs/vm-build.md`.
+
+One wrinkle worth knowing if you script this yourself: `list hdds` does **not**
+reliably print an `In use by VMs:` line (it does not on VirtualBox 7.x, even for an
+attached VDI). The authoritative source for what is in use is each VM's own
+attachment list — `showvminfo --machinereadable`, the `ImageUUID` keys.
+
+---
+
 ## Bonus: automation harnesses may block the attach script
 
 Running `spinrite-attach.sh` through an AI coding agent can be refused by the

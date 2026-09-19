@@ -68,12 +68,38 @@ What remains is the part that would actually save time: whether `type bios` sele
 matched set with `SPINRITE list exit noramtest type bios` before ever combining
 `type` with `auto level 3`. See `docs/field-notes.md`.
 
-## Let `attach` match disks by serial
+## Target a Level 3 pass at a bounded region of a drive
 
-`spinrite-attach.sh attach` takes device names, which are stable within a boot but
-not across boots or machines. The tracker records serials, so selecting by serial
-substring would let a batch list be carried between sessions verbatim instead of
-re-derived from the current `list` output.
+`skills/virtualbox-dos-vm/SKILL.md` documents a `Range` token —
+`<selector> <start%> [<end%>]`, or `#<startsector> [#<endsector>]`, percentages
+requiring a decimal point — so
+
+```
+SPINRITE auto level 3 both exit noramtest bios 81 75.0 100.0
+```
+
+should refresh only the last quarter of a drive. **That syntax has never been run
+here.** It is transcribed from the command-line wiki, not confirmed.
+
+It is worth confirming because a whole-drive Level 3 costs 1-4 hours while the
+interesting region is often a fraction of the drive. `docs/field-notes.md` records
+exactly such a case: a 512 GB SATA M.2 reading
+`465.5 / 461.9 / 460.9 / 463.1 / 384.3` MB/s — four points at the SATA III ceiling
+and a **100% mark ~17% low**. A targeted pass on that last quarter, re-benchmarked,
+would take minutes instead of hours, and would settle whether the dip is a defect
+or inherent to the drive (see the caveat in `docs/field-notes.md`).
+
+What to find out:
+
+- Whether `75.0 100.0` is accepted and actually bounds the pass, and what a
+  percentage written without a decimal point does instead.
+- Whether the `both` benchmark still means anything on a bounded pass, or whether it
+  benchmarks the whole drive regardless — which would break the before/after pairing
+  the tracker stores.
+- Whether `#<startsector>` and the percentage form can be mixed.
+- Whether the log entry in `C:\SRLOGS\<N>.LOG` distinguishes a bounded pass from a
+  full one. If it does not, the range has to go in the tracker's `notes` column, or a
+  later reader will take a "Clean, 0 defects" row for a full pass.
 
 ## Script the VM build
 

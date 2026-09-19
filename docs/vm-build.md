@@ -136,7 +136,9 @@ the raw file without `closemedium` first leaves a dangling entry pointing at a
 path that no longer exists. They accumulate silently and clutter
 `VBoxManage list hdds`; four had built up before this was noticed (2026-09-19).
 Clearing a stale one after the fact works the same way —
-`VBoxManage closemedium disk <uuid>`, taking the UUID from `list hdds`. Never add
+`VBoxManage closemedium disk <uuid>`, taking the UUID from `list hdds`, or
+`bin/spinrite-attach.sh prune` to sweep every stale entry at once
+(`docs/troubleshooting.md` §6). Never add
 `--delete` here: on a raw-device-backed medium that is pointed at real hardware.
 
 This is also how you pull SpinRite's run logs (`C:\SRLOGS\<N>.LOG`) off the

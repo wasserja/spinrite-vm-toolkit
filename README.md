@@ -32,6 +32,12 @@ pointed at the wrong drive.
 - Say which disks explicitly — `attach sdb sdc` attaches only those;
   `attach --all` attaches everything discovered; `attach --all --except sde` leaves
   one out.
+- Disks can be named by **serial substring** instead of device letter —
+  `attach S0EXAMPLE000001`. Device letters reassign on every boot; serials do not,
+  and they are what the tracker records, so a batch list written down in one
+  session can be replayed verbatim in the next. A substring must be at least 4
+  characters and match exactly one drive, or the script refuses rather than
+  guessing.
 - The live boot USB is always excluded automatically (identified via its
   `/cdrom` mount, not a hardcoded device letter).
 - **Have backups.** SpinRite is a maintenance and recovery tool, not a backup
@@ -82,6 +88,9 @@ mkdir -p ~/.claude/skills && cp -r skills/virtualbox-dos-vm ~/.claude/skills/
 ~/bin/spinrite-track.py report
 ~/bin/spinrite-attach.sh list
 ~/bin/spinrite-attach.sh attach --all
+
+# 6. occasional housekeeping: clear stale VirtualBox media registry entries
+~/bin/spinrite-attach.sh prune
 ```
 
 Then follow [docs/workflow.md](docs/workflow.md): ReadSpeed baseline → SpinRite
@@ -92,7 +101,8 @@ sequence to Claude Code — see [Let Claude Code drive it](#let-claude-code-driv
 
 ```
 bin/
-  spinrite-attach.sh     list physical disks; attach the chosen ones and launch
+  spinrite-attach.sh     list physical disks; attach the chosen ones and launch;
+                         prune the stale VirtualBox media registry
   spinrite-backup.sh     tar the whole setup into a timestamped archive
   spinrite-track.py      the run tracker (CSV report / add / update)
 desktop/

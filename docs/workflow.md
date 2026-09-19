@@ -86,9 +86,20 @@ its own ceiling on how many drives it exposes to SpinRite — see `docs/vm-build
 When a machine has more disks than that, work them in batches:
 
 1. `~/bin/spinrite-attach.sh list` — the full inventory, with the port count.
-2. Attach the first batch by name: `~/bin/spinrite-attach.sh attach sdb sdc sdd`.
+2. Attach the first batch: `~/bin/spinrite-attach.sh attach sdb sdc sdd`.
 3. Work that batch end to end — steps 4 through 7 below, tracker entries included.
-4. Power the VM off, then attach the next set by name.
+4. Power the VM off, then attach the next set.
+
+**Write the remaining batches down by serial, not by device letter.** `attach`
+takes either, but `sdb` is only meaningful until the next boot — and batches
+routinely span sessions, because the drives are hours apart. A serial substring
+(4+ characters, matching exactly one drive) survives the reboot and is the same
+string the tracker stores, so the next session's batch list can be lifted
+straight out of `spinrite-track.py report`:
+
+```
+~/bin/spinrite-attach.sh attach S0EXAMPLE000002 EX0MPL3A
+```
 
 The script refuses an over-capacity selection outright rather than attaching part of
 it, and prints a ready-to-run first batch when it does. Record each batch in the

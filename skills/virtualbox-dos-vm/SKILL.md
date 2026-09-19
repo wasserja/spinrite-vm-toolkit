@@ -34,6 +34,10 @@ The order matters. Steps 1-2 are cheap and stop you wasting hours.
    `attach sdb sdc`, or `attach --all --except sde`. The script unmounts partitions,
    builds stable raw VMDK pointers, attaches them and starts the VM in GUI mode.
    Under a tool call add `--yes` (the typed-confirmation prompt has no TTY).
+   Disks can be named by **serial substring** as well as device letter —
+   `attach S0EXAMPLE000001`. Prefer the serial whenever the list came from the
+   tracker or from an earlier session: device letters reassign every boot, serials
+   do not. 4+ characters, and it must match exactly one drive or the script refuses.
 5. **Baseline with ReadSpeed.** At the `C:\>` prompt: `rs`. See "ReadSpeed" below.
    **Capture the results before typing anything else** — the table is only on screen.
 6. **Run SpinRite Level 3**, one command per drive:
@@ -89,9 +93,14 @@ SpinRite through the guest BIOS, which has its own ceiling. When a machine has m
 disks than that:
 
 1. `spinrite-attach.sh list` — the full inventory, with the port count.
-2. Attach the first batch by name: `spinrite-attach.sh attach sdb sdc sdd`.
+2. Attach the first batch: `spinrite-attach.sh attach sdb sdc sdd`.
 3. Work that batch end to end (steps 5-9 above), including the tracker entries.
-4. Power the VM off, then attach the next set by name.
+4. Power the VM off, then attach the next set.
+
+Record the pending batches **by serial**, not by device letter — batches routinely
+span sessions and `sdb` does not survive a reboot. The serial is also what the
+tracker already stores, so the next batch lifts straight out of
+`spinrite-track.py report`.
 
 The script refuses an over-capacity selection outright rather than attaching part of
 it, and prints a ready-to-run first batch. Log each batch as it finishes so the next
@@ -346,6 +355,16 @@ by-id basename and verifies the baked-in size against `blockdev --getsize64` bef
 reuse. To clear one by hand: detach with `--medium none`, `VBoxManage closemedium
 disk <uuid-or-path>` (**no** `--delete` — unnecessary risk on a raw-device-backed
 medium), then `rm` the descriptor.
+
+**The media registry accumulates inaccessible entries** — one per raw pointer whose
+drive is not currently plugged in, plus every `clonemedium` clone deleted without
+`closemedium` first. Harmless but noisy: 19 stale against 2 live on one stick. Sweep
+them with `~/bin/spinrite-attach.sh prune` (`--yes` under a tool call); it skips
+media still attached to a VM and never passes `--delete`, so the `.vmdk` pointer
+files survive and `attach` re-registers them when the drive returns. Note that
+`list hdds` does **not** reliably print an `In use by VMs:` line on VirtualBox 7.x —
+to tell what is really attached, read each VM's `ImageUUID` keys from
+`showvminfo --machinereadable`.
 
 **USB-NVMe bridges (Sabrent / Realtek RTL9210) drop off the bus under sustained
 access.** A drive in such an enclosure that hits DynaStat deep recovery can make the
