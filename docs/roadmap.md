@@ -10,11 +10,16 @@ than the VM can carry, and `bin/spinrite-attach.sh` now refuses an over-capacity
 selection and suggests a first batch. That path has never run against a real
 over-capacity machine — it was verified with a forced disk list, not real hardware.
 
-The same applies to the rest of the reworked CLI: the argument parsing, the error
-paths and both read-only modes were exercised, but `attach` has not yet unmounted,
-attached and launched a real disk under the new interface. The first session on real
-hardware is the test — expect to check that `attach sdb sdc` attaches exactly those
-two, and that `--yes` works in place of the typed confirmation.
+**The rest of the reworked CLI is now verified on real hardware** (2026-09-19, a
+single-disk Lenovo laptop with a mounted SATA M.2 SSD). `attach <name> --yes` ran
+end to end: it refused nothing it should have allowed, detached two stale media left
+on the AHCI controller by a previous machine's session, unmounted the live
+filesystem, reused the existing size-matched raw pointer, attached to port 0 and
+launched the VM to a `C:\>` prompt, where ReadSpeed saw exactly the one physical
+drive. All thirteen read-only and error paths were re-checked first and none of them
+touched a disk. What is still unverified is specifically the **multi-disk** case:
+that `attach sdb sdc` attaches exactly those two and no others, and the batching
+procedure below.
 
 What to find out while doing it:
 
@@ -45,10 +50,23 @@ A Level 3 pass here runs 1-4 hours per drive, so this is worth an afternoon:
 ## Test the `type bios` multi-drive selector
 
 `BIOS <n>` and `PORT <n>` select exactly one drive and cannot be chained, so a
-multi-drive run is currently one command per drive. Physical drives report Type
-`BIOS` while the FreeDOS system disk reports Type `ATA`, so `type bios` should match
-exactly the physical drives. Verify the matched set with `SPINRITE list exit type
-bios` before ever combining `type` with `auto level 3`. See `docs/field-notes.md`.
+multi-drive run is currently one command per drive.
+
+**Half of this is now answered** (2026-09-19). `SPINRITE list exit noramtest` does
+report the AHCI-passthrough physical disk as Type `BIOS` (Port and BIOS both `81`)
+and the FreeDOS system disk as Type `ATA` (Port `PM`), so `type bios` describes
+exactly the physical drives. Two things came out of the same check:
+
+- `list` **also** stops on the RAM test screen — the command above needs
+  `noramtest`, which the previous version of this item was missing.
+- The physical drive's Model and Serial columns read `....`, so `MODEL`/`SERIAL`
+  selectors cannot address a passthrough drive at all. `BIOS`, `PORT` and
+  `TYPE bios` are the only ways in.
+
+What remains is the part that would actually save time: whether `type bios` selects
+**several** physical drives in one command when several are attached. Verify the
+matched set with `SPINRITE list exit noramtest type bios` before ever combining
+`type` with `auto level 3`. See `docs/field-notes.md`.
 
 ## Let `attach` match disks by serial
 

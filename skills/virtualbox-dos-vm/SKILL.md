@@ -138,8 +138,10 @@ SPINRITE auto level 3 both exit noramtest bios <port>
 
 Two behaviors that decide how the command is written:
 
-- **`AUTO` does not skip the RAM test** — hence `noramtest`, which makes the run
-  unattended straight through drive discovery. The trade-off (raised with the user
+- **The RAM test screen precedes every invocation, not just `AUTO`** — even a
+  bare `SPINRITE list exit` stops on "Testing System RAM" and waits for Enter.
+  Hence `noramtest` on anything meant to run unattended, read-only ones included:
+  `SPINRITE list exit noramtest`. The trade-off (raised with the user
   and accepted): it skips SpinRite's RAM-reliability check, which matters slightly
   more under Level 3 because that pass rewrites sectors.
 - **`BIOS <n>` and `PORT <n>` select exactly one drive and cannot be chained.**
@@ -148,7 +150,14 @@ Two behaviors that decide how the command is written:
   one's `exit` has returned to the prompt. SpinRite processes multiple selected
   drives one at a time anyway. (`TYPE`/`MODEL`/`SERIAL`/`SIZE` match by pattern and
   can select several; using `TYPE` to select all physical drives at once is untested
-  — see `docs/field-notes.md`.)
+  with more than one drive attached — see `docs/field-notes.md`.)
+- **Only `BIOS`, `PORT` and `TYPE bios` can select a passthrough drive.** In
+  `SPINRITE list exit noramtest` output, an AHCI-attached physical disk shows its
+  Model and Serial columns as `....` — SpinRite reaches it through the BIOS and
+  never reads its identity strings — so `MODEL <text>` and `SERIAL <text>` have
+  nothing to match on. The FreeDOS system disk is the one row with a real identity,
+  and it is Type `ATA`, Port `PM`; physical drives are Type `BIOS` with Port and
+  BIOS numbers both starting at `81`.
 
 `BOTH` writes the before/after benchmark straight into the run's `.LOG` file under
 "Drive's measured performance before/after running SpinRite" headers, so no
@@ -267,12 +276,25 @@ landed on `C:` (**VM must be powered off**):
 VBoxManage clonemedium "SRDOS-disk001.vdi" /tmp/check.raw --format RAW   # non-destructive
 fdisk -l /tmp/check.raw                      # find the FAT partition's start sector
 sudo mount -o ro,loop,offset=$((START_SECTOR*512)) /tmp/check.raw /mnt/point
-ls /mnt/point                                # inspect, then umount + rm the raw file
+ls /mnt/point                                # inspect
+sudo umount /mnt/point
+VBoxManage closemedium disk /tmp/check.raw   # before the rm, not after
+rm /tmp/check.raw
 ```
+
+**`closemedium` is not optional.** `clonemedium` registers the clone in
+VirtualBox's media registry; `rm`-ing the file without unregistering it leaves a
+dangling entry in `VBoxManage list hdds` forever. Clear an old one with
+`VBoxManage closemedium disk <uuid>` — never with `--delete`.
 
 This minimal FreeDOS has no `FIND.EXE`/`MORE.COM`, so a log cannot be paged or
 grepped from inside DOS — pull it to the host for anything beyond what a `type`
 dump's last screenful shows.
+
+**Do not pick the newest `RS0NN.TXT` by its host-side mtime.** The FAT directory
+timestamps the guest writes are offset from wall-clock time (observed 4 hours out
+on 2026-09-19), so `ls -t` can mislead. Every ReadSpeed log ends with a
+`Benchmarked: <day>, <date> at <time>` line — read that instead.
 
 ## Safety rules
 

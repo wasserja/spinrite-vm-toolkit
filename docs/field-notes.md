@@ -15,6 +15,12 @@ normal physics.
 So a dip at one point on an SSD is a signal, not variance. Treat a low outlier as
 a candidate for a SpinRite pass rather than shrugging it off.
 
+A SATA SSD reads far lower than an NVMe one and that is just the bus, not a
+finding: a 512 GB SATA M.2 measured `465.5 / 461.9 / 460.9 / 463.1 / 384.3` MB/s
+(2026-09-19) — the first four sit right at the SATA III ceiling, and it is the
+**384.3 at the 100% mark**, ~17% below the rest, that is worth noting. Compare the
+shape of the five numbers, never their absolute level against a different bus.
+
 **Caveat, learned the hard way:** unevenness that persists *after* a clean Level 3
 pass (zero defects found) is most likely inherent to that drive's controller or
 flash layout, not a defect. Observed on an NVMe drive whose 75% dip survived a
@@ -81,10 +87,14 @@ SPINRITE auto level 3 both exit noramtest bios <port>
 
 Confirmed behaviors:
 
-- `auto` does **not** skip the RAM test screen — add `noramtest` for that, or
-  send a blind Enter. `noramtest` skips SpinRite's RAM-reliability check, which
-  matters slightly more than usual under Level 3 since it rewrites sectors; bad
-  host RAM could in theory corrupt data undetected. A deliberate trade-off.
+- **The RAM test screen comes up for *every* invocation, not just `auto`** — it
+  precedes even a pure enumeration. `SPINRITE list exit` stops on "Testing System
+  RAM" and waits for Enter; `SPINRITE list exit noramtest` goes straight to the
+  table. Verified 2026-09-19. Put `noramtest` in any command you expect to run
+  unattended, including read-only ones. `noramtest` skips SpinRite's
+  RAM-reliability check, which matters slightly more than usual under Level 3 since
+  it rewrites sectors; bad host RAM could in theory corrupt data undetected. A
+  deliberate trade-off.
 - `both` writes the before/after benchmark directly into the run's log at
   `C:\SRLOGS\<N>.LOG`, under "Drive's measured performance before/after running
   SpinRite" headers — no screenshot needed. The manual Main-Menu benchmark does
@@ -93,14 +103,31 @@ Confirmed behaviors:
   `bios 81 bios 82` drops to a help/error screen and runs nothing (a safe no-op).
   The wiki's wording is the tell: `BIOS`/`PORT` say "select **drive**", while
   `TYPE`/`MODEL`/`SERIAL`/`SIZE` say "select **drive(s)**" and match by pattern.
-- **Untested idea:** under this VM, physical drives report Type `BIOS` while the
-  FreeDOS system disk reports Type `ATA`, so a single `type bios` selector should
-  match exactly the physical drives and exclude the system disk — collapsing what is
-  currently one command per drive into one command. Verify the matched set first
-  with `SPINRITE list exit type bios` (or plain `SPINRITE type bios`, which should
-  stop at a selection screen rather than starting work) before ever combining `type`
-  with `auto level 3` on real hardware. Not while another DOS operation is running:
-  DOS is single-tasking.
+- **The Type split is confirmed** (2026-09-19, one physical disk attached).
+  `SPINRITE list exit noramtest` prints:
+
+  ```
+  Type |Port|BIOS|Runtime|Size|        Model         |      Serial
+  -----+----+----+-------+----+----------------------+------------------
+  ATA  | PM | 80 |  ...  |105M|VBOX HARDDISK         |VBxxxxxxxx-xxxxxxxx
+  BIOS | 81 | 81 |  ...  |512G|        ....          |       ....
+  ```
+
+  The FreeDOS system disk on the IDE controller reports Type `ATA` (Port `PM`,
+  primary master); the AHCI-passthrough physical disk reports Type `BIOS`, with
+  Port and BIOS both `81`. So `type bios` does describe exactly the physical
+  drives and excludes the system disk. Still unverified with **more than one**
+  physical drive attached — that is the part that would actually collapse one
+  command per drive into one command, and it is still on the roadmap. Check the
+  matched set with `SPINRITE list exit noramtest type bios` before ever combining
+  `type` with `auto level 3`. Not while another DOS operation is running: DOS is
+  single-tasking.
+- **`MODEL`, `SERIAL` and `SIZE`-by-text selectors are unusable on passthrough
+  drives.** In the table above the physical drive's Model and Serial columns are
+  literally `....` — SpinRite reaches AHCI-attached disks through the BIOS and
+  never sees their identity strings. Only `BIOS <n>`, `PORT <n>` and `TYPE bios`
+  can select them. (Host-side selection by serial, i.e. the `spinrite-attach.sh`
+  roadmap item, is unaffected — that runs on Linux, which does see the serial.)
 - **Fallback that always works:** one command per drive, sequentially. SpinRite
   processes multiple selected drives one at a time anyway.
 

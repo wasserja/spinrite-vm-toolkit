@@ -126,9 +126,24 @@ VBoxManage clonemedium "SRDOS-disk001.vdi" /tmp/check.raw --format RAW   # non-d
 fdisk -l /tmp/check.raw                      # find the FAT partition's start sector
 sudo mount -o ro,loop,offset=$((START_SECTOR*512)) /tmp/check.raw /mnt/point
 ls /mnt/point
-sudo umount /mnt/point && rm /tmp/check.raw
+sudo umount /mnt/point
+VBoxManage closemedium disk /tmp/check.raw   # MUST come before the rm -- see below
+rm /tmp/check.raw
 ```
+
+**`clonemedium` registers the clone in VirtualBox's media registry**, so deleting
+the raw file without `closemedium` first leaves a dangling entry pointing at a
+path that no longer exists. They accumulate silently and clutter
+`VBoxManage list hdds`; four had built up before this was noticed (2026-09-19).
+Clearing a stale one after the fact works the same way —
+`VBoxManage closemedium disk <uuid>`, taking the UUID from `list hdds`. Never add
+`--delete` here: on a raw-device-backed medium that is pointed at real hardware.
 
 This is also how you pull SpinRite's run logs (`C:\SRLOGS\<N>.LOG`) off the
 guest — the minimal FreeDOS install has no `FIND.EXE`/`MORE.COM`, so you cannot
 page or grep a log file from inside DOS.
+
+**Do not pick the newest `RS0NN.TXT` by its host-side mtime.** The FAT directory
+timestamps the guest writes are offset from wall-clock time (observed 4 hours out
+on 2026-09-19), so `ls -t` can mislead. Every ReadSpeed log ends with a
+`Benchmarked: <day>, <date> at <time>` line — read that instead.

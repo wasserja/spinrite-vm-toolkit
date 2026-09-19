@@ -58,6 +58,21 @@ It prints the table with the selected disks marked and requires a typed `yes` fi
 every sector at Level 3. `--yes` skips the prompt, for scripted or agent-driven runs
 that cannot answer it.
 
+Under an automation harness, launch the whole script detached rather than waiting on
+it in the foreground — the script ends in `VBoxManage startvm --type gui`, which is
+the call documented in `docs/troubleshooting.md` as prone to hanging with exit
+code 144 under a harness:
+
+```
+~/bin/spinrite-attach.sh attach <name> --yes > /tmp/attach.log 2>&1 < /dev/null &
+disown
+```
+
+Then read `/tmp/attach.log` and confirm with `VBoxManage showvminfo SRDOS
+--machinereadable | grep VMState=`. Run this way on 2026-09-19 it did not hang, so
+whether the bare foreground call is still affected is untested — the detached form
+costs nothing either way.
+
 Disk names are as printed by `list`; `sdb`, `/dev/sdb` and `nvme0n1` all work. A name
 that matches nothing is an error rather than a silently narrower selection.
 
