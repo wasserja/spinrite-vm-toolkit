@@ -45,11 +45,49 @@ exactly what `AHCI` is configured for today. So at the current setting IDE costs
 nothing in drive count and halves the runtime. AHCI only wins if its portcount can
 actually go past 3, which is itself unverified (see the PortCount item below).
 
+### Queued: repeat the measurement on an NVMe (next machine with a spare one)
+
+The SATA result may not generalize, and the tracker is the reason to doubt it. The
+Toshiba SATA SSD benchmarked **184 / 207 / 143 MB/s** through the AHCI BIOS path,
+but NVMe drives already in the tracker reach **600-724 MB/s** through that same
+path (Samsung 980 1TB, 970 EVO Plus 2TB). They are plainly not hitting the ceiling
+the SATA drive hit, so the headroom IDE recovered may simply not be there.
+
+Roughly 15 minutes, on any machine with an NVMe that is not the repo disk:
+
+```
+~/bin/spinrite-attach.sh attach <serial-substring> --yes     # lands on AHCI
+#   in the guest:
+SPINRITE list exit noramtest                                  # expect Type BIOS
+rs                                                            # ReadSpeed, screenshot
+spinrite auto level 3 exit noramtest bios 81 75.0 80.0        # time it
+
+#   then, VM off, move the SAME .vmdk to IDE and repeat identically:
+VBoxManage storageattach SRDOS --storagectl AHCI  --port 0 --device 0 --type hdd --medium none
+VBoxManage storageattach SRDOS --storagectl PIIX4 --port 1 --device 0 --type hdd --medium <the .vmdk>
+#   expect Type to flip to ATA / Port SM, with Model+Serial populated
+```
+
+Record wall-clock for each Level 3 leg and cross-check against the host's
+`awk '{print $7}' /sys/block/<dev>/stat` delta, which should equal the region size
+on both legs (it did here: 25.6 GB each, exactly 5% of 512 GB).
+
+Two traps from doing it the first time: use `--type gui` via the detached `nohup`
+form, and do **not** leave a `showvminfo` wait-loop polling, or `startvm` fails with
+"already locked by a session" (`docs/troubleshooting.md` §2 and §2a).
+
+One more thing worth capturing while there: today's Level 3 ran at 68.8 MB/s
+effective against a 184 MB/s read benchmark, ~37%. Applying that ratio to the 980's
+600 MB/s predicts a 1 TB pass in ~1h15m, but the tracker records 4:16:14. So the
+benchmark is a poor predictor of pass duration and something else dominates a long
+run. Whatever that is, it may matter more than the controller.
+
 Before changing `CONTROLLER` in `bin/spinrite-attach.sh`:
 
-- Repeat on at least one spinning disk and one NVMe. This was a SATA SSD, and the
-  DynaStat behaviour the forum reply describes only appears on drives with real
-  errors — where the reply claims AHCI wins. Untested here; this drive was clean.
+- Repeat on at least one spinning disk and one NVMe — the NVMe leg is queued above
+  with a ready-to-run procedure. The DynaStat behaviour the forum reply describes
+  only appears on drives with real errors, where the reply claims AHCI wins;
+  untested here, since this drive was clean.
 - Confirm 3 drives attach and enumerate correctly across `PIIX4` port 0 device 1,
   port 1 device 0 and port 1 device 1. Only single-drive IDE has been exercised.
 - Decide what happens to ReadSpeed. It reads *faster* on AHCI (flat ~460 MB/s versus
