@@ -14,6 +14,10 @@ series — read these first, they are the foundation:
   https://forums.grc.com/threads/how-to-run-spinrite-on-a-uefi-only-machine-part-3a-of-5-linux-as-base-os.1617/
 - **Part 3b of 5 — Linux as base OS**
   https://forums.grc.com/threads/how-to-run-spinrite-on-a-uefi-only-machine-part-3b-of-5-linux-as-base-os.1618/
+  Also the source of the IDE-vs-AHCI controller comparison — drive counts, which
+  SpinRite driver engages, and the warning that BIOS-attached access may be much
+  slower. That trade-off explains a result this repo otherwise could not: see
+  `docs/vm-build.md` and `docs/field-notes.md`.
 - **Part 5a of 5 — using the pre-built VM**
   https://forums.grc.com/threads/how-to-run-spinrite-on-a-uefi-only-machine-part-5a-of-5-using-pre-built-vm.1619/
 

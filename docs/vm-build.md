@@ -19,6 +19,39 @@ SpinRite lives on a disk image that is deliberately not in this repo).
 | `PIIX4` | IDE, 2 ports | Port 0 = FreeDOS `C:` system disk. Port 1 kept free for temporarily attaching a DOS utility image. |
 | `AHCI` | SATA, 3 ports | Where raw physical disks get attached. `PortCount` caps how many drives one run can handle. |
 
+### Why AHCI, and what it costs
+
+The upstream guide (forum part 3b, `docs/origins.md`) lays out the trade-off between
+the two controllers you could hang physical disks off:
+
+- **IDE** — *"Can only add up to 3 drives, as IDE only supports 4 total"*, but
+  *"Faster operation (SpinRite native IDE driver works)"*.
+- **AHCI** — *"Can have up to 30 drives (ports 0 to 29)"*, but *"Drives are seen as
+  BIOS attached; SpinRite native AHCI doesn't work for some reason"* and *"BIOS
+  access may be an order of magnitude slower than IDE (or the same speed, you need
+  to test and see!!)"*.
+
+This toolkit uses AHCI, and the consequence is visible: SpinRite's drive-select
+screen reports the access mode as `BIOS extend v3.0`, and its own benchmark reads
+roughly a quarter of what ReadSpeed reports for the same drive on the same day. A
+reply in that thread argues AHCI is in fact faster on drives with real errors.
+Nobody here has measured it — it is on `docs/roadmap.md`.
+
+### How many drives one run can carry
+
+Two separate ceilings, and only one of them is a setting:
+
+- **`PortCount` on the AHCI controller** — 3 as built. Raising it is one command:
+  `VBoxManage storagectl SRDOS --name AHCI --portcount <n>` (up to 30).
+- **The guest BIOS drive table.** SpinRite reaches these disks as BIOS-attached
+  drives (`BIOS 81`, `BIOS 82`, ...), so whether it sees drives beyond the first few
+  is a property of the BIOS, not of `PortCount`. This has not been tested past 3.
+
+Because the second ceiling is the unknown one, the documented answer to "more disks
+than slots" is to run them in batches rather than to raise `PortCount` and hope —
+see `docs/workflow.md` §3a. `bin/spinrite-attach.sh` reads the live `PortCount` and
+refuses an over-capacity selection before attaching anything.
+
 Guest: `OSType=DOS`, 128 MB RAM, 9 MB VRAM. DOS needs nothing more.
 
 The names matter. `spinrite-attach.sh` hardcodes `CONTROLLER="AHCI"` and

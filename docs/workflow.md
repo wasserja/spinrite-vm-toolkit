@@ -3,6 +3,12 @@
 What to do, in order, each time you boot the stick on a machine and want to
 maintain its drives.
 
+You can also just hand this whole sequence to Claude Code. With the skill in
+`skills/virtualbox-dos-vm/` installed, "check this machine's drives" or "run the
+SpinRite workflow here" is enough — it knows this order, the AUTO command line, how
+to drive the DOS guest by synthetic keystrokes and what never to do to a running VM.
+See the README. You still read the disk table and decide what gets written to.
+
 ## 0. Check the tracker first
 
 ```
@@ -25,25 +31,55 @@ build problem — Secure Boot MOK trust is per-machine firmware state and does n
 travel with the USB stick. Fix in `docs/troubleshooting.md`. Do this check on
 every new machine; sometimes it is already enrolled and nothing is needed.
 
-## 2 & 3. Discover the drives and launch the VM
-
-`bin/spinrite-attach.sh` does both in one step — it enumerates the physical disks
-(excluding the live boot USB), prints a table of what it found, asks for a typed
-`yes`, then unmounts, attaches and starts the VM.
+## 2. Look at the drives
 
 ```
-~/bin/spinrite-attach.sh                # all discovered disks
-~/bin/spinrite-attach.sh sde            # ...except /dev/sde
-~/bin/spinrite-attach.sh sde sdf        # ...except those two
+~/bin/spinrite-attach.sh list
 ```
 
-Read the printed table before typing `yes`. Every disk listed there gets its
-partitions unmounted and gets handed raw to a DOS utility that will write to it
-at Level 3. The exclusion arguments exist for the case where you have more disks
-present than free AHCI ports, or an external drive you do not want touched.
+Read-only. Prints every physical disk on this machine except the live boot USB —
+device, size, model, serial, mounted partitions — plus how many AHCI ports the VM
+has. Nothing is unmounted, attached or started. This is also the default: bare
+`spinrite-attach.sh` does exactly this and nothing else.
 
-If you prefer a desktop icon, `desktop/spinrite-attach.desktop` launches the same
-script in a terminal.
+## 3. Attach the ones you want, and launch the VM
+
+```
+~/bin/spinrite-attach.sh attach --all              # everything discovered
+~/bin/spinrite-attach.sh attach sdb sdc            # only these two
+~/bin/spinrite-attach.sh attach --all --except sde # everything but that one
+```
+
+The script unmounts each selected disk's partitions, builds or reuses a stable raw
+VMDK pointer for it, attaches it to the VM's AHCI controller and starts the VM.
+
+It prints the table with the selected disks marked and requires a typed `yes` first.
+**Read that table.** Every marked disk is handed raw to a DOS utility that rewrites
+every sector at Level 3. `--yes` skips the prompt, for scripted or agent-driven runs
+that cannot answer it.
+
+Disk names are as printed by `list`; `sdb`, `/dev/sdb` and `nvme0n1` all work. A name
+that matches nothing is an error rather than a silently narrower selection.
+
+If you prefer a desktop icon, `desktop/spinrite-attach.desktop` runs
+`attach --all` in a terminal.
+
+## 3a. More drives than slots
+
+The AHCI controller has a fixed number of ports (3 as built) and the guest BIOS has
+its own ceiling on how many drives it exposes to SpinRite — see `docs/vm-build.md`.
+When a machine has more disks than that, work them in batches:
+
+1. `~/bin/spinrite-attach.sh list` — the full inventory, with the port count.
+2. Attach the first batch by name: `~/bin/spinrite-attach.sh attach sdb sdc sdd`.
+3. Work that batch end to end — steps 4 through 7 below, tracker entries included.
+4. Power the VM off, then attach the next set by name.
+
+The script refuses an over-capacity selection outright rather than attaching part of
+it, and prints a ready-to-run first batch when it does. Record each batch in the
+tracker as it finishes, so the next batch comes from `spinrite-track.py report`
+rather than from memory — batches often span sessions, and the drives are hours
+apart.
 
 ## 4. Baseline with ReadSpeed
 

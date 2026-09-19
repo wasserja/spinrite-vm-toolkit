@@ -25,15 +25,30 @@ change it.
 
 This one will mislead you badly if you miss it.
 
-On the same NVMe drive on the same day: SpinRite's own benchmark (Main Menu
-option 3) reported **~384–390 MB/s** front/mid/end, while ReadSpeed reported
-**~1492–1646 MB/s**.
+On the same NVMe drive on the same day: SpinRite's own benchmark reported
+**~384-390 MB/s** front/mid/end, while ReadSpeed reported **~1492-1646 MB/s**.
 
-That is not a problem with the drive. Under raw-disk passthrough in this VM,
-SpinRite's drive-select screen reports the access mode as `BIOS extend v3.0` —
-its benchmark drives the disk through that BIOS-extended path, which caps
-throughput far below the hardware's real capability. ReadSpeed apparently uses a
-faster path for the same virtualized disk.
+That is not a problem with the drive — it is the controller choice. Under raw-disk
+passthrough here, SpinRite's drive-select screen reports the access mode as
+`BIOS extend v3.0`, and the upstream guide (forum part 3b) says why. Of the two
+controller options it compares:
+
+- **IDE** — *"Can only add up to 3 drives, as IDE only supports 4 total"*, but
+  *"Faster operation (SpinRite native IDE driver works)"*.
+- **AHCI** — *"Can have up to 30 drives (ports 0 to 29)"*, but *"Drives are seen as
+  BIOS attached; SpinRite native AHCI doesn't work for some reason"* and *"BIOS
+  access may be an order of magnitude slower than IDE (or the same speed, you need
+  to test and see!!)"*.
+
+This toolkit attaches to AHCI, so SpinRite drives the disk through that
+BIOS-attached path rather than its own driver, which caps throughput far below the
+hardware. ReadSpeed evidently uses a faster path for the same virtualized disk.
+
+Worth noting that a reply in the same thread disputes the ordering: *"In my tests
+using VirtualBox's AHCI Controller is actually much faster when you deal with actual
+errors on a SATA drive...It's almost native speed as in DOS. VirtualBox's IDE
+controller took forever to mark a bad block."* Nobody here has measured it either
+way — see `docs/roadmap.md`.
 
 **Compare SpinRite-before to SpinRite-after, and ReadSpeed-before to
 ReadSpeed-after. Never across tools.** The tracker stores them in separate columns
@@ -79,10 +94,13 @@ Confirmed behaviors:
   The wiki's wording is the tell: `BIOS`/`PORT` say "select **drive**", while
   `TYPE`/`MODEL`/`SERIAL`/`SIZE` say "select **drive(s)**" and match by pattern.
 - **Untested idea:** under this VM, physical drives report Type `BIOS` while the
-  FreeDOS system disk reports Type `ATA`, so `type bios` should match exactly the
-  physical drives and exclude the system disk. Verify with
-  `SPINRITE list exit type bios` before ever combining `type` with
-  `auto level 3` on real hardware.
+  FreeDOS system disk reports Type `ATA`, so a single `type bios` selector should
+  match exactly the physical drives and exclude the system disk — collapsing what is
+  currently one command per drive into one command. Verify the matched set first
+  with `SPINRITE list exit type bios` (or plain `SPINRITE type bios`, which should
+  stop at a selection screen rather than starting work) before ever combining `type`
+  with `auto level 3` on real hardware. Not while another DOS operation is running:
+  DOS is single-tasking.
 - **Fallback that always works:** one command per drive, sequentially. SpinRite
   processes multiple selected drives one at a time anyway.
 
@@ -117,3 +135,24 @@ Fields (space-separated, 1-indexed): 1 = reads completed, 3 = sectors read,
 
 Balanced read + write throughput ≈ a Level 3 refresh pass (read-verify-rewrite).
 Read-only ≈ a benchmark or scan pass.
+
+## Corrections worth remembering
+
+Things that were believed here and turned out to be wrong. Kept because the wrong
+version is plausible enough to be re-invented.
+
+**`SPINRITE.EXE` and `RS.EXE` do not auto-run on boot.** An early session recorded
+that they did — either a misreading or a since-changed `AUTOEXEC.BAT`. They are
+launched from the `C:\>` prompt, normally by the user. Do not screenshot-poll a
+freshly booted VM expecting a benchmark to already be in flight.
+
+**An interrupted pass did not resume where it stopped.** A drive interrupted at
+1.4116% restarted from 0% on the next session rather than continuing. The likely
+cause is that the attach script created its VMDK pointer under a different by-id
+alias than the interrupted run used, so SpinRite's resume-state tracking did not
+recognise it as the same drive. If resuming matters, force it explicitly with a
+start percentage rather than trusting the "Before Beginning" screen's default:
+
+```
+SPINRITE auto level 3 exit bios 81 1.4116 100.0
+```

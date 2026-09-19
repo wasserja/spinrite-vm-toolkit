@@ -5,11 +5,16 @@
 # (right-click the icon in Dolphin/Plasma and allow launching) before it will
 # run. Terminal=true is required: the script asks for a typed "yes" before it
 # unmounts anything.
+#
+# "attach --all" is the verb form of what this icon has always done: print the
+# discovered-disk table, wait for a typed "yes", attach everything found, and
+# start the VM. To pick a subset instead, run the script from a terminal --
+# "spinrite-attach.sh list" first, then "spinrite-attach.sh attach sdb sdc".
 [Desktop Entry]
 Type=Application
 Name=SpinRite Attach
-Comment=Discover physical disks, attach to SRDOS VM, and launch SpinRite
-Exec=/home/YOUR_USER/bin/spinrite-attach.sh
+Comment=Attach ALL discovered physical disks to the SRDOS VM and launch SpinRite
+Exec=/home/YOUR_USER/bin/spinrite-attach.sh attach --all
 Icon=drive-harddisk
 Terminal=true
 Categories=System;

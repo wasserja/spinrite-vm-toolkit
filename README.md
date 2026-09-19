@@ -19,16 +19,21 @@ data-integrity trap, and operational knowledge encoded as a skill).
 
 ## ⚠️ Read this before running anything
 
-`bin/spinrite-attach.sh` **unmounts every partition on every disk it discovers**
-and hands those disks raw to a DOS utility that, at Level 3, rewrites every
+`bin/spinrite-attach.sh attach` **unmounts every partition on every disk you give
+it** and hands those disks raw to a DOS utility that, at Level 3, rewrites every
 sector. That is the intended behavior. It is also exactly what you do not want
 pointed at the wrong drive.
 
-- The script prints a table of what it found and **requires you to type `yes`**.
-  Read the table first.
+- **Listing is the default and is read-only.** `spinrite-attach.sh` with no
+  arguments, or `spinrite-attach.sh list`, only prints what it found. Nothing is
+  unmounted, attached or started without the word `attach`.
+- `attach` prints the table with the selected disks marked and **requires you to
+  type `yes`**. Read the table first.
+- Say which disks explicitly — `attach sdb sdc` attaches only those;
+  `attach --all` attaches everything discovered; `attach --all --except sde` leaves
+  one out.
 - The live boot USB is always excluded automatically (identified via its
   `/cdrom` mount, not a hardcoded device letter).
-- Exclude anything else by name: `spinrite-attach.sh sde sdf`.
 - **Have backups.** SpinRite is a maintenance and recovery tool, not a backup
   strategy.
 - Level 3 warns on-screen that it is not recommended for SSD, hybrid or SMR
@@ -73,19 +78,21 @@ cp desktop/spinrite-attach.desktop ~/Desktop/
 # 4. optional: the Claude Code skill
 mkdir -p ~/.claude/skills && cp -r skills/virtualbox-dos-vm ~/.claude/skills/
 
-# 5. check what this stick has already done, then run
+# 5. check what this stick has already done, look, then run
 ~/bin/spinrite-track.py report
-~/bin/spinrite-attach.sh
+~/bin/spinrite-attach.sh list
+~/bin/spinrite-attach.sh attach --all
 ```
 
 Then follow [docs/workflow.md](docs/workflow.md): ReadSpeed baseline → SpinRite
-Level 3 → ReadSpeed again → record the run → back up the stick.
+Level 3 → ReadSpeed again → record the run → back up the stick. Or hand the whole
+sequence to Claude Code — see [Let Claude Code drive it](#let-claude-code-drive-it).
 
 ## What's here
 
 ```
 bin/
-  spinrite-attach.sh     discover physical disks, attach to the VM, launch it
+  spinrite-attach.sh     list physical disks; attach the chosen ones and launch
   spinrite-backup.sh     tar the whole setup into a timestamped archive
   spinrite-track.py      the run tracker (CSV report / add / update)
 desktop/
@@ -104,19 +111,41 @@ docs/
   troubleshooting.md     five problems that cost real time to diagnose
   field-notes.md         benchmark interpretation, AUTO mode, hardware findings
   tracking.md            the run tracker
+  roadmap.md             what is untested or unbuilt, and why it matters
 ```
 
-## The Claude Code skill
+## Let Claude Code drive it
 
 [`skills/virtualbox-dos-vm/SKILL.md`](skills/virtualbox-dos-vm/SKILL.md) is the
-largest single artifact here. It encodes the VBoxManage-level operational
-knowledge: the permission and crash footguns, attaching raw disks and images,
-reading the FreeDOS guest disk from the host, driving SpinRite and ReadSpeed by
-synthetic keystrokes, and SpinRite's command-line AUTO mode.
+largest single artifact here, and it is not just reference material — it is the
+session itself, written down. Copy it to `~/.claude/skills/virtualbox-dos-vm/` and
+you can stop running the steps by hand:
 
-Copy it to `~/.claude/skills/virtualbox-dos-vm/` and Claude Code will load it when
-you start working on the VM. It is useful as plain reading material too — it is
-where most of the sharp edges are written down.
+> check this machine's drives
+
+> run the SpinRite workflow here, skip the external USB drive
+
+The skill carries the order of operations (tracker first, then the driver check,
+then attach), the SpinRite command line, how to drive the DOS guest by synthetic
+keystrokes, how to read the run log off a FreeDOS disk from the host, what to put in
+the tracker, and the two things that must never happen to a running VM.
+
+Two practical notes:
+
+- An agent's own safety classifier may refuse to run the attach script, since it
+  unmounts and hands over whole physical disks. Adding
+  `{ "permissions": { "allow": ["Bash(~/bin/spinrite-attach.sh:*)"] } }` to
+  `~/.claude/settings.json` yourself clears that — the agent cannot grant it to
+  itself. See [docs/troubleshooting.md](docs/troubleshooting.md).
+- Use `--yes` for agent-driven attaches; the typed confirmation has no terminal to
+  read from under a tool call.
+
+**The division of labour stays put.** The agent drives the VM, reads screens,
+extracts numbers and writes the tracker row. You read the disk table and decide
+which drives get written to. Nothing in the skill changes who confirms that.
+
+It is useful as plain reading material too — it is where most of the sharp edges are
+written down.
 
 ## Privacy note
 

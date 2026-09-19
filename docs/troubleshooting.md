@@ -196,8 +196,15 @@ Claude Code, that is in `~/.claude/settings.json`:
 { "permissions": { "allow": ["Bash(~/bin/spinrite-attach.sh:*)"] } }
 ```
 
-Once the rule exists the agent can invoke it — but the script's
-`read -rp "...Type 'yes' to continue: "` prompt has no TTY under a tool call, so
-it exits right after printing the discovered-disks table. Pipe the confirmation
-in: `echo "yes" | ~/bin/spinrite-attach.sh [exclude-args...]`. Read the table in
-the output before doing that, not after.
+Once the rule exists the agent can invoke it — but the script's typed-`yes` prompt
+has no TTY under a tool call, so it would exit right after printing the table. That
+is what `--yes` is for:
+
+```
+~/bin/spinrite-attach.sh list                   # read-only; read this table first
+~/bin/spinrite-attach.sh attach sdb sdc --yes   # then attach exactly those
+```
+
+Read the table before the attach, not after. (Older notes and shell history may show
+`echo "yes" | spinrite-attach.sh` — that pipe was the workaround before `--yes`
+existed, and the bare-disk-name form it used means the opposite thing now.)
